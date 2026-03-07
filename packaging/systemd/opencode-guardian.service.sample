@@ -1,0 +1,12 @@
+[Unit]
+Description=opencode-guardian sidecar
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{WORKDIR}}
+ExecStart={{EXEC_PATH}} --config {{CONFIG_PATH}} run-once --json
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

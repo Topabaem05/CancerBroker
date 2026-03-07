@@ -120,6 +120,21 @@ impl Default for SafetyPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IpcConfig {
+    pub enabled: bool,
+    pub socket_path: PathBuf,
+}
+
+impl Default for IpcConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            socket_path: PathBuf::from("/tmp/opencode-guardian.sock"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardianConfig {
     #[serde(default)]
     pub mode: Mode,
@@ -135,6 +150,8 @@ pub struct GuardianConfig {
     pub evidence_retention: EvidenceRetention,
     #[serde(default)]
     pub safety: SafetyPolicy,
+    #[serde(default)]
+    pub ipc: IpcConfig,
 }
 
 impl Default for GuardianConfig {
@@ -147,6 +164,7 @@ impl Default for GuardianConfig {
             storage: StoragePolicy::default(),
             evidence_retention: EvidenceRetention::default(),
             safety: SafetyPolicy::default(),
+            ipc: IpcConfig::default(),
         }
     }
 }

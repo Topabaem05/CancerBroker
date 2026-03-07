@@ -667,7 +667,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/main.rs`, `src/daemon/`, `src/cli.rs`, `tests/e2e_observe_mode.rs`, `tests/metrics.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test e2e_observe_mode`
 
-- [ ] 7. Add feature-gated phase-2 IPC and service-manager integration artifacts
+- [x] 7. Add feature-gated phase-2 IPC and service-manager integration artifacts
 
   **What to do**:
   - Add optional local IPC surface for future plugin commands, behind an explicit feature flag or mode.
