@@ -324,7 +324,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/config.rs`, `src/evidence.rs`, `src/safety.rs`, `tests/`
   - Pre-commit: `cargo test -p opencode-guardian --test process_safety`
 
-- [ ] 2. Implement process and storage inventory monitors
+- [x] 2. Implement process and storage inventory monitors
 
   **What to do**:
   - Build process sampling around `sysinfo` with parent-PID indexing rather than assuming a `children()` helper.
