@@ -4,9 +4,10 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
+    #[default]
     Observe,
     Enforce,
 }
@@ -24,12 +25,6 @@ impl Mode {
 pub struct GuardianConfig {
     #[serde(default)]
     pub mode: Mode,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Observe
-    }
 }
 
 impl Default for GuardianConfig {

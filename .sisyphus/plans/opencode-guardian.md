@@ -187,7 +187,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
 
 ## TODOs
 
-- [ ] 0. Bootstrap the Rust workspace and TDD harness
+- [x] 0. Bootstrap the Rust workspace and TDD harness
 
   **What to do**:
   - Create the `opencode-guardian` Cargo workspace and binary crate.
