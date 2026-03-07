@@ -6,6 +6,7 @@ use color_eyre::eyre::{Result, WrapErr};
 use serde::Serialize;
 
 use crate::config::load_config;
+use crate::daemon::run_daemon_once;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, run_once};
 
@@ -29,6 +30,12 @@ pub enum Command {
         json: bool,
         #[arg(long, default_value = ".sisyphus/evidence")]
         evidence_dir: PathBuf,
+    },
+    Daemon {
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 1)]
+        max_events: usize,
     },
 }
 
@@ -80,6 +87,22 @@ pub fn run(cli: Cli) -> Result<()> {
                 println!(
                     "proposed_action={:?} executed_action={:?}",
                     output.proposed_action, output.executed_action
+                );
+            }
+        }
+        Command::Daemon { json, max_events } => {
+            let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
+            let output = runtime
+                .block_on(run_daemon_once(&config, max_events))
+                .wrap_err("daemon run failure")?;
+
+            if json {
+                println!("{}", serde_json::to_string(&output)?);
+            } else {
+                println!(
+                    "socket_path={} received_events={}",
+                    output.socket_path.display(),
+                    output.received_events
                 );
             }
         }

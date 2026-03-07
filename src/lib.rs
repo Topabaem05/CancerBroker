@@ -1,6 +1,8 @@
 pub mod cleanup;
 pub mod cli;
+pub mod completion;
 pub mod config;
+pub mod daemon;
 pub mod evidence;
 pub mod ipc;
 pub mod metrics;

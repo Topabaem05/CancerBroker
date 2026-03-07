@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::completion::CompletionSource;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -135,6 +137,34 @@ impl Default for IpcConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletionCleanupPolicy {
+    pub enabled_sources: Vec<CompletionSource>,
+    pub dedupe_ttl_secs: u64,
+    pub cleanup_retry_interval_secs: u64,
+    pub reconciliation_interval_secs: u64,
+    pub daemon_socket_path: PathBuf,
+}
+
+impl Default for CompletionCleanupPolicy {
+    fn default() -> Self {
+        Self {
+            enabled_sources: vec![
+                CompletionSource::Status,
+                CompletionSource::Idle,
+                CompletionSource::ToolPartCompleted,
+                CompletionSource::Error,
+                CompletionSource::Deleted,
+                CompletionSource::Inferred,
+            ],
+            dedupe_ttl_secs: 600,
+            cleanup_retry_interval_secs: 15,
+            reconciliation_interval_secs: 60,
+            daemon_socket_path: PathBuf::from("/tmp/opencode-guardian-completion.sock"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardianConfig {
     #[serde(default)]
     pub mode: Mode,
@@ -152,6 +182,8 @@ pub struct GuardianConfig {
     pub safety: SafetyPolicy,
     #[serde(default)]
     pub ipc: IpcConfig,
+    #[serde(default)]
+    pub completion: CompletionCleanupPolicy,
 }
 
 impl Default for GuardianConfig {
@@ -165,6 +197,7 @@ impl Default for GuardianConfig {
             evidence_retention: EvidenceRetention::default(),
             safety: SafetyPolicy::default(),
             ipc: IpcConfig::default(),
+            completion: CompletionCleanupPolicy::default(),
         }
     }
 }

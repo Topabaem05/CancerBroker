@@ -85,14 +85,14 @@
 
 ## Execution Plan
 
-- [ ] 0. Add completion-event domain model and config knobs
+- [x] 0. Add completion-event domain model and config knobs
   - Add config for completion sources, dedupe TTL, cleanup retry interval, reconciliation interval, and daemon socket path.
   - Define `CompletionEvent`, `CompletionSource`, and a minimal persistent state model.
   - Acceptance:
     - `cargo test -p opencode-guardian --test completion_config -- --exact parses_completion_cleanup_settings`
     - `cargo test -p opencode-guardian --test completion_state -- --exact duplicate_event_key_is_stable`
 
-- [ ] 1. Add event ingestion surface for session completion
+- [x] 1. Add event ingestion surface for session completion
   - Add a `daemon` runtime command and local socket receiver as the single event-driven entrypoint.
   - Ingest `session.status` / `session.idle` / `session.error` / `session.deleted` / `message.part.updated` payloads in the canonical NDJSON shape above.
   - Normalize those event shapes into `CompletionEvent` while preserving event source and correlation metadata.
