@@ -529,7 +529,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/evidence.rs`, `tests/evidence_schema.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test evidence_schema`
 
-- [ ] 5. Implement safe process remediation and conservative storage cleanup executors
+- [x] 5. Implement safe process remediation and conservative storage cleanup executors
 
   **What to do**:
   - Implement same-UID process validation, graceful `TERM`, timeout, then `KILL` for verified owned targets.
