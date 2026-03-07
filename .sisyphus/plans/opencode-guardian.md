@@ -732,7 +732,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/ipc/`, `packaging/`, `tests/ipc_surface.rs`, `tests/packaging.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test ipc_surface`
 
-- [ ] 8. Run reproducer fixtures, soak tests, CI hardening, and release packaging
+- [x] 8. Run reproducer fixtures, soak tests, CI hardening, and release packaging
 
   **What to do**:
   - Build fixture scenarios that emulate opencode/OMO leak amplification patterns, including orphaned processes, stale storage, and long-running output growth.

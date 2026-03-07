@@ -73,4 +73,11 @@ impl ProcessInventory {
             .map(|process| process.start_time_secs == start_time_secs)
             .unwrap_or(false)
     }
+
+    pub fn total_memory_bytes(&self) -> u64 {
+        self.processes
+            .values()
+            .map(|process| process.memory_bytes)
+            .sum()
+    }
 }
