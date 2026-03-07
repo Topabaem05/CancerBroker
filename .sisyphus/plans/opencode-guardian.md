@@ -392,7 +392,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/monitor/`, `tests/process_inventory.rs`, `tests/storage_inventory.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test process_inventory`
 
-- [ ] 3. Implement the policy engine and remediation ladder
+- [x] 3. Implement the policy engine and remediation ladder
 
   **What to do**:
   - Convert monitor signals into time-windowed breaches, quorum decisions, and action candidates.
