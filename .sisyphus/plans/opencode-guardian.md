@@ -461,7 +461,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/policy.rs`, `tests/remediation_ladder.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test remediation_ladder`
 
-- [ ] 4. Implement evidence capture and audit persistence
+- [x] 4. Implement evidence capture and audit persistence
 
   **What to do**:
   - Persist pre-action evidence bundles with timestamps, signal series, target identity proof, rationale, and redacted log excerpts.
