@@ -7,6 +7,14 @@ pub enum RemediationStage {
     WarnThrottle,
 }
 
+impl RemediationStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::WarnThrottle => "warn_throttle",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignalWindow {
     pub name: String,

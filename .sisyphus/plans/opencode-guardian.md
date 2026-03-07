@@ -599,7 +599,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `src/remediation.rs`, `src/cleanup.rs`, `tests/process_safety.rs`, `tests/storage_boundary.rs`
   - Pre-commit: `cargo test -p opencode-guardian --test process_safety`
 
-- [ ] 6. Wire the reconciliation loop, observe-only daemon mode, CLI, and local metrics
+- [x] 6. Wire the reconciliation loop, observe-only daemon mode, CLI, and local metrics
 
   **What to do**:
   - Integrate monitors, policy engine, evidence store, and executors into the long-running control loop.
