@@ -257,7 +257,7 @@ Critical Path: 0 -> 1 -> 3 -> 5 -> 6 -> 8
   - Files: `Cargo.toml`, `src/`, `tests/`, `fixtures/`, `.github/workflows/`
   - Pre-commit: `cargo test --workspace`
 
-- [ ] 1. Define the safety contract, config schema, and evidence model
+- [x] 1. Define the safety contract, config schema, and evidence model
 
   **What to do**:
   - Define config types for thresholds, cooldowns, action budgets, artifact allowlists, evidence retention, and mode selection.

@@ -1,0 +1,32 @@
+mode = "observe"
+
+[sampling]
+sample_interval_secs = 2
+breach_window_samples = 6
+breach_required_samples = 4
+signal_quorum = 3
+active_session_grace_minutes = 15
+
+[thresholds]
+rss_slope_mib_per_min = 250
+rss_slope_duration_minutes = 6
+orphan_count = 4
+stale_artifact_growth_gib = 6
+
+[budgets]
+max_destructive_per_target_per_hour = 2
+max_destructive_per_day = 5
+
+[storage]
+allowlist = [
+  "fixtures/storage/session",
+  "fixtures/storage/message",
+]
+
+[evidence_retention]
+days = 10
+max_mib = 800
+
+[safety]
+same_uid_only = true
+required_command_markers = ["opencode", "openagent"]
