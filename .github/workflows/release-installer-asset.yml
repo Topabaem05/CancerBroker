@@ -1,13 +1,13 @@
 name: release-installer-asset
 
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "opencode-session-memory-sidebar-installer-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to upload the standalone installer asset to"
+        description: "Release tag to create or update for the standalone installer asset"
         required: true
         type: string
 
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-installer-asset-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  group: release-installer-asset-${{ github.ref_name || github.event.inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
       - name: Resolve release tag
         id: release_tag
         run: |
-          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
           if [ -z "$TAG" ]; then
             echo "Release tag is required" >&2
             exit 1
@@ -61,7 +61,10 @@ jobs:
           node ./dist/opencode-session-memory-sidebar-installer.cjs uninstall --config "$TMP_DIR/opencode.json"
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
 
-      - name: Upload standalone installer asset
+      - name: Create or update GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --clobber
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ steps.release_tag.outputs.tag }}" >/dev/null 2>&1 \
+            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --clobber \
+            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
