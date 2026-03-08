@@ -62,6 +62,28 @@ pub enum EvidenceError {
     Serialize { source: serde_json::Error },
 }
 
+fn unix_timestamp_secs(now: SystemTime) -> u64 {
+    now.duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn build_evidence_write_success(path: PathBuf) -> EvidenceWriteOutcome {
+    EvidenceWriteOutcome {
+        path: Some(path),
+        fallback_to_non_destructive: false,
+        error: None,
+    }
+}
+
+fn build_evidence_write_failure(error: EvidenceError) -> EvidenceWriteOutcome {
+    EvidenceWriteOutcome {
+        path: None,
+        fallback_to_non_destructive: true,
+        error: Some(error.to_string()),
+    }
+}
+
 pub fn redacted_record(input: EvidenceInput) -> EvidenceRecord {
     let environment = input
         .environment
@@ -85,13 +107,8 @@ pub fn build_pre_action_evidence(
     signals: Vec<SignalSnapshot>,
     context: EvidenceInput,
 ) -> PreActionEvidence {
-    let timestamp_unix_secs = now
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-
     PreActionEvidence {
-        timestamp_unix_secs,
+        timestamp_unix_secs: unix_timestamp_secs(now),
         target_id,
         proposed_stage,
         policy_rationale,
@@ -114,11 +131,7 @@ impl EvidenceStore {
             source,
         })?;
 
-        let file_name = format!(
-            "evidence-{}-{}.json",
-            evidence.timestamp_unix_secs,
-            sanitized_target_id(&evidence.target_id)
-        );
+        let file_name = pre_action_file_name(evidence);
         let path = self.root.join(file_name);
 
         let json = serde_json::to_string_pretty(evidence)
@@ -137,16 +150,8 @@ pub fn persist_pre_action_with_fallback(
     evidence: &PreActionEvidence,
 ) -> EvidenceWriteOutcome {
     match store.persist_pre_action(evidence) {
-        Ok(path) => EvidenceWriteOutcome {
-            path: Some(path),
-            fallback_to_non_destructive: false,
-            error: None,
-        },
-        Err(error) => EvidenceWriteOutcome {
-            path: None,
-            fallback_to_non_destructive: true,
-            error: Some(error.to_string()),
-        },
+        Ok(path) => build_evidence_write_success(path),
+        Err(error) => build_evidence_write_failure(error),
     }
 }
 
@@ -169,5 +174,162 @@ fn sanitized_target_id(target_id: &str) -> String {
         "unknown-target".to_string()
     } else {
         sanitized
+    }
+}
+
+fn pre_action_file_name(evidence: &PreActionEvidence) -> String {
+    format!(
+        "evidence-{}-{}.json",
+        evidence.timestamp_unix_secs,
+        sanitized_target_id(&evidence.target_id)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use tempfile::tempdir;
+
+    use super::{
+        EvidenceInput, EvidenceStore, PreActionEvidence, SignalSnapshot,
+        build_evidence_write_failure, build_evidence_write_success, build_pre_action_evidence,
+        evidence_exists, persist_pre_action_with_fallback, pre_action_file_name, redacted_record,
+        unix_timestamp_secs,
+    };
+
+    fn sample_input() -> EvidenceInput {
+        EvidenceInput {
+            rationale: "step1_warn_throttle".to_string(),
+            prompt_excerpt: Some("secret prompt".to_string()),
+            environment: [("API_KEY".to_string(), "secret".to_string())]
+                .into_iter()
+                .collect(),
+            metadata: [("session".to_string(), "ses_123".to_string())]
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    fn sample_evidence() -> PreActionEvidence {
+        build_pre_action_evidence(
+            UNIX_EPOCH,
+            "cli/target:alpha".to_string(),
+            "warn_throttle".to_string(),
+            "observe_mode_records_without_action".to_string(),
+            vec![SignalSnapshot {
+                name: "rss_slope".to_string(),
+                breached_samples: 3,
+                window_samples: 5,
+            }],
+            sample_input(),
+        )
+    }
+
+    #[test]
+    fn redacted_record_scrubs_prompt_and_environment_values() {
+        let record = redacted_record(sample_input());
+
+        assert_eq!(record.rationale, "step1_warn_throttle");
+        assert_eq!(record.prompt_excerpt.as_deref(), Some("[REDACTED]"));
+        assert_eq!(
+            record.environment.get("API_KEY").map(String::as_str),
+            Some("[REDACTED]")
+        );
+        assert_eq!(
+            record.metadata.get("session").map(String::as_str),
+            Some("ses_123")
+        );
+    }
+
+    #[test]
+    fn unix_timestamp_secs_clamps_pre_epoch_times() {
+        let before_epoch = UNIX_EPOCH
+            .checked_sub(Duration::from_secs(1))
+            .expect("pre-epoch time should exist");
+
+        assert_eq!(unix_timestamp_secs(before_epoch), 0);
+    }
+
+    #[test]
+    fn build_pre_action_evidence_redacts_context() {
+        let evidence = sample_evidence();
+
+        assert_eq!(evidence.timestamp_unix_secs, 0);
+        assert_eq!(evidence.target_id, "cli/target:alpha");
+        assert_eq!(evidence.proposed_stage, "warn_throttle");
+        assert_eq!(
+            evidence.redacted_context.prompt_excerpt.as_deref(),
+            Some("[REDACTED]")
+        );
+        assert_eq!(evidence.signals.len(), 1);
+    }
+
+    #[test]
+    fn pre_action_file_name_sanitizes_target_ids() {
+        let evidence = sample_evidence();
+
+        assert_eq!(
+            pre_action_file_name(&evidence),
+            "evidence-0-cli_target_alpha.json"
+        );
+    }
+
+    #[test]
+    fn persist_pre_action_writes_json_file() {
+        let dir = tempdir().expect("tempdir");
+        let store = EvidenceStore::new(dir.path());
+        let evidence = sample_evidence();
+
+        let path = store
+            .persist_pre_action(&evidence)
+            .expect("evidence should persist");
+
+        assert!(evidence_exists(&path));
+        let content = fs::read_to_string(&path).expect("written evidence should be readable");
+        assert!(content.contains("warn_throttle"));
+        assert!(content.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn persist_pre_action_with_fallback_marks_failures() {
+        let dir = tempdir().expect("tempdir");
+        let file_path = dir.path().join("not-a-directory");
+        fs::write(&file_path, "occupied").expect("guard file should be written");
+        let store = EvidenceStore::new(&file_path);
+        let evidence = sample_evidence();
+
+        let outcome = persist_pre_action_with_fallback(&store, &evidence);
+
+        assert_eq!(outcome.path, None);
+        assert!(outcome.fallback_to_non_destructive);
+        assert!(
+            outcome
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("evidence io error"))
+        );
+    }
+
+    #[test]
+    fn evidence_write_outcome_builders_match_expected_flags() {
+        let success = build_evidence_write_success("/tmp/evidence.json".into());
+        assert_eq!(success.path, Some("/tmp/evidence.json".into()));
+        assert!(!success.fallback_to_non_destructive);
+        assert_eq!(success.error, None);
+
+        let failure = build_evidence_write_failure(super::EvidenceError::Io {
+            path: "/tmp/evidence".to_string(),
+            source: std::io::Error::other("boom"),
+        });
+        assert_eq!(failure.path, None);
+        assert!(failure.fallback_to_non_destructive);
+        assert!(
+            failure
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("boom"))
+        );
     }
 }
