@@ -20,6 +20,58 @@ Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 cargo run -- --config fixtures/config/observe-only.toml status --json
 ```
 
+## Installation
+
+### English
+
+- Clone the repository and build the binary:
+
+```bash
+git clone https://github.com/Topabaem05/CancerBroker.git
+cd CancerBroker
+cargo build --release
+```
+
+### Chinese
+
+- 克隆仓库并构建二进制文件：
+
+```bash
+git clone https://github.com/Topabaem05/CancerBroker.git
+cd CancerBroker
+cargo build --release
+```
+
+### Spanish
+
+- Clona el repositorio y compila el binario:
+
+```bash
+git clone https://github.com/Topabaem05/CancerBroker.git
+cd CancerBroker
+cargo build --release
+```
+
+### Korean
+
+- 저장소를 클론한 뒤 바이너리를 빌드합니다:
+
+```bash
+git clone https://github.com/Topabaem05/CancerBroker.git
+cd CancerBroker
+cargo build --release
+```
+
+### Japanese
+
+- リポジトリをクローンしてバイナリをビルドします:
+
+```bash
+git clone https://github.com/Topabaem05/CancerBroker.git
+cd CancerBroker
+cargo build --release
+```
+
 ## Usage
 
 ### English
