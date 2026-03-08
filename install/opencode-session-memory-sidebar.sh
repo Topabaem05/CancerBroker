@@ -5,7 +5,7 @@ set -eu
 INSTALLER_REPO=${OPENCODE_SIDEBAR_INSTALLER_REPO:-"Topabaem05/CancerBroker"}
 INSTALLER_REF=${OPENCODE_SIDEBAR_INSTALLER_REF:-"main"}
 INSTALLER_CONTENT_PATH=${OPENCODE_SIDEBAR_INSTALLER_CONTENT_PATH:-"packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs"}
-INSTALLER_URL=${OPENCODE_SIDEBAR_INSTALLER_URL:-"https://raw.githubusercontent.com/$INSTALLER_REPO/$INSTALLER_REF/$INSTALLER_CONTENT_PATH"}
+INSTALLER_URL=${OPENCODE_SIDEBAR_INSTALLER_URL:-"https://github.com/$INSTALLER_REPO/releases/latest/download/opencode-session-memory-sidebar-installer.cjs"}
 
 if ! command -v curl >/dev/null 2>&1; then
   printf '%s\n' "curl is required to fetch the installer." >&2

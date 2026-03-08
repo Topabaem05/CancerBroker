@@ -17,6 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 opencode --restart
 ```
 
+- 이 bootstrap script는 GitHub Releases의 최신 installer asset을 내려받습니다.
+
 - 요구 사항:
   - `node` 또는 `bun`이 설치되어 있어야 합니다.
 
@@ -56,6 +58,12 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 
 ```bash
 brew uninstall opencode-session-memory-sidebar-installer
+```
+
+- 현재 버전 고정 release asset URL:
+
+```text
+https://github.com/Topabaem05/CancerBroker/releases/download/opencode-session-memory-sidebar-installer-v0.1.0/opencode-session-memory-sidebar-installer.cjs
 ```
 
 - npm publish 이후 지원할 예정인 패키지 실행 방식:
@@ -118,6 +126,7 @@ opencode --restart
   - 그 다음 installer 패키지 `opencode-session-memory-sidebar-installer`를 publish 합니다.
   - 둘은 버전을 독립적으로 올릴 수 있지만, installer 기본 대상 패키지명은 실제 publish 이름과 항상 맞춰야 합니다.
   - Homebrew 경로도 public 저장소 기준으로 사용할 수 있습니다.
+  - release asset은 `.github/workflows/release-installer-asset.yml`과 installer tag로 관리합니다.
 
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 

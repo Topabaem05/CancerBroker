@@ -12,6 +12,8 @@ Current public bootstrap:
 curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
 ```
 
+The bootstrap script fetches the latest published installer asset from GitHub Releases.
+
 - Requirements:
   - `node` or `bun` installed locally
 
@@ -64,6 +66,12 @@ Uninstall with Homebrew:
 
 ```bash
 brew uninstall opencode-session-memory-sidebar-installer
+```
+
+Current versioned release asset URL used by the formula:
+
+```text
+https://github.com/Topabaem05/CancerBroker/releases/download/opencode-session-memory-sidebar-installer-v0.1.0/opencode-session-memory-sidebar-installer.cjs
 ```
 
 ## Future npm path
@@ -139,3 +147,4 @@ session-memory-plugin remove
 - Creates a timestamped backup before write
 - Restart OpenCode after install/uninstall: `opencode --restart`
 - Homebrew formula path: `brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer`
+- Release asset workflow: `.github/workflows/release-installer-asset.yml`

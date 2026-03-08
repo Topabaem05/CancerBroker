@@ -15,6 +15,8 @@
     curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
     ```
 
+    The bootstrap script downloads the latest installer asset from GitHub Releases.
+
   - Authenticated fallback if raw fetches fail:
 
     ```bash
@@ -52,6 +54,12 @@ If Homebrew requires an explicit tap URL for this repository name:
 ```bash
 brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
 brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+Current versioned release asset URL:
+
+```text
+https://github.com/Topabaem05/CancerBroker/releases/download/opencode-session-memory-sidebar-installer-v0.1.0/opencode-session-memory-sidebar-installer.cjs
 ```
 
 ## Publish Order
@@ -99,14 +107,15 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 1. Update the version field in each package that changed
 2. Verify local checks pass
 3. Run the `npm-publish` workflow with `confirm=publish`
-4. Test clone-free public install with:
+4. Push tag `opencode-session-memory-sidebar-installer-v<version>` or run `.github/workflows/release-installer-asset.yml`
+5. Test clone-free public install with:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
    opencode --restart
    ```
 
-5. Test npm package install after publish with:
+6. Test npm package install after publish with:
 
    ```bash
    bunx opencode-session-memory-sidebar-installer
@@ -120,3 +129,4 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 - Installer is idempotent for both install and uninstall.
 - Installer supports global config by default and project config with `--project`.
 - Homebrew formula is available from the public repository tap.
+- Release assets are published by `.github/workflows/release-installer-asset.yml`.
