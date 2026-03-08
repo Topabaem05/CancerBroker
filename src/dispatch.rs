@@ -1,4 +1,6 @@
-use crate::completion::{CompletionEvent, CompletionStateStore, CompletionStoreBegin};
+use crate::completion::{
+    CompletionEvent, CompletionStateSnapshot, CompletionStateStore, CompletionStoreBegin,
+};
 use crate::resolution::{CandidateResolver, ResolvedCandidates};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,5 +42,13 @@ impl CleanupDispatcher {
 
     pub fn pending_keys(&self) -> Vec<String> {
         self.state.pending_keys()
+    }
+
+    pub fn snapshot(&self) -> CompletionStateSnapshot {
+        self.state.snapshot()
+    }
+
+    pub fn set_resolver(&mut self, resolver: CandidateResolver) {
+        self.resolver = resolver;
     }
 }

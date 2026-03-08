@@ -7,15 +7,15 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
 use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_artifacts};
-use crate::completion::CompletionEvent;
+use crate::completion::{CompletionEvent, CompletionStateSnapshot};
 use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::{IpcError, receive_completion_events_once};
 use crate::monitor::storage::scan_allowlisted_roots;
 use crate::remediation::{
     ProcessRemediationOutcome, ProcessRemediationRequest, RemediationError, remediate_process,
 };
-use crate::resolution::ResolvedCandidates;
 use crate::resolution::session_ids_in_text;
+use crate::resolution::{CandidateResolver, ResolvedCandidates};
 use crate::safety::OwnershipPolicy;
 
 #[derive(Debug, Clone)]
@@ -112,6 +112,14 @@ impl AutoCleanupEngine {
     ) -> Result<Vec<AutoCleanupResult>, AutoCleanupError> {
         let events = infer_reconciliation_events(&self.settings.cleanup_policy.allowlist, now)?;
         run_reconciliation(self, &events, now)
+    }
+
+    pub fn state_snapshot(&self) -> CompletionStateSnapshot {
+        self.dispatcher.snapshot()
+    }
+
+    pub fn set_resolver(&mut self, resolver: CandidateResolver) {
+        self.dispatcher.set_resolver(resolver);
     }
 }
 
