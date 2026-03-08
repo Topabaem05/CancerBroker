@@ -13,15 +13,31 @@
 - 가장 쉬운 설치 방법 (git clone 불필요):
 
 ```bash
-bunx opencode-session-memory-sidebar-installer
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
 opencode --restart
+```
+
+- 스크립트를 먼저 내려받아 확인한 뒤 실행하고 싶다면:
+
+```bash
+curl -fsSL -o /tmp/opencode-session-memory-sidebar.sh https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh
+sh /tmp/opencode-session-memory-sidebar.sh
+opencode --restart
+```
+
+- 이 방식은 저장소를 clone하지 않고, GitHub에 올라간 standalone installer를 내려받아 바로 설정만 반영합니다.
+
+- npm publish 이후 지원할 예정인 패키지 실행 방식:
+
+```bash
+bunx opencode-session-memory-sidebar-installer
+npx --yes opencode-session-memory-sidebar-installer
 ```
 
 - npm scope를 붙여 배포할 경우:
 
 ```bash
-bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
-opencode --restart
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package @your-scope/opencode-session-memory-sidebar
 ```
 
 - 위 명령이 하는 일:
@@ -32,7 +48,7 @@ opencode --restart
 - 프로젝트 로컬로만 추가하고 싶을 때:
 
 ```bash
-bunx opencode-session-memory-sidebar-installer --project
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --project
 ```
 
 - 이 저장소에서 로컬 개발용으로 더 편하게 추가/제거할 때:
@@ -57,7 +73,7 @@ session-memory-plugin remove
 - 제거:
 
 ```bash
-bunx opencode-session-memory-sidebar-installer uninstall
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- uninstall
 opencode --restart
 ```
 
@@ -70,6 +86,7 @@ opencode --restart
   - 실제 플러그인 패키지 `opencode-session-memory-sidebar`를 먼저 publish 합니다.
   - 그 다음 installer 패키지 `opencode-session-memory-sidebar-installer`를 publish 합니다.
   - 둘은 버전을 독립적으로 올릴 수 있지만, installer 기본 대상 패키지명은 실제 publish 이름과 항상 맞춰야 합니다.
+  - Homebrew 경로는 별도 tap/formula 인프라가 필요해서 추후 단계로 둡니다.
 
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 

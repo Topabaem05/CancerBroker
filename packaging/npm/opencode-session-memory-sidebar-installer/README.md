@@ -6,8 +6,41 @@ This package does not copy files into the plugin directory. Instead, it edits `o
 
 ## Install (no git clone)
 
+Current GitHub-hosted bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+```
+
+Reviewable two-step variant:
+
+```bash
+curl -fsSL -o /tmp/opencode-session-memory-sidebar.sh https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh
+sh /tmp/opencode-session-memory-sidebar.sh
+```
+
+Project-local config:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --project
+```
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- uninstall
+```
+
+## Future npm path
+
+After the installer package is published to npm, these package-exec commands will be supported too:
+
 ```bash
 bunx opencode-session-memory-sidebar-installer
+```
+
+```bash
+npx --yes opencode-session-memory-sidebar-installer
 ```
 
 Install a scoped package name instead:
@@ -16,16 +49,28 @@ Install a scoped package name instead:
 bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
 ```
 
-Project-local config:
+```bash
+npx --yes opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
+```
+
+Project-local config via npm package:
 
 ```bash
 bunx opencode-session-memory-sidebar-installer --project
 ```
 
-## Uninstall
+```bash
+npx --yes opencode-session-memory-sidebar-installer --project
+```
+
+Uninstall via npm package:
 
 ```bash
 bunx opencode-session-memory-sidebar-installer uninstall
+```
+
+```bash
+npx --yes opencode-session-memory-sidebar-installer uninstall
 ```
 
 ## Local repository workflow
