@@ -45,6 +45,27 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
 
 The bootstrap script itself still falls back to `gh api` if direct raw downloads fail.
 
+## Homebrew
+
+Recommended direct install:
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+If Homebrew needs an explicit tap URL because this repository is named `CancerBroker` instead of `homebrew-cancerbroker`:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+Uninstall with Homebrew:
+
+```bash
+brew uninstall opencode-session-memory-sidebar-installer
+```
+
 ## Future npm path
 
 After the installer package is published to npm, these package-exec commands will be supported too:
@@ -117,4 +138,4 @@ session-memory-plugin remove
 - Supports JSONC comments/trailing commas
 - Creates a timestamped backup before write
 - Restart OpenCode after install/uninstall: `opencode --restart`
-- Homebrew support is planned via the public repository tap
+- Homebrew formula path: `brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer`

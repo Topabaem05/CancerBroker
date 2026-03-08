@@ -41,7 +41,18 @@
 1. Current public curl path: bootstrap script downloads the installer without cloning the repo.
 2. Authenticated fallback path: `gh api` can bootstrap the same script if raw fetches fail.
 3. Future npm path: `bunx` / `npx` once both packages are published.
-4. Planned Homebrew path: public tap formula from this repository.
+4. Homebrew path: public tap formula from this repository.
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+If Homebrew requires an explicit tap URL for this repository name:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
 
 ## Publish Order
 
@@ -108,4 +119,4 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 - Installer preserves JSONC-compatible files.
 - Installer is idempotent for both install and uninstall.
 - Installer supports global config by default and project config with `--project`.
-- Homebrew is planned now that the repository is public.
+- Homebrew formula is available from the public repository tap.

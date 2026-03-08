@@ -39,6 +39,25 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
   | sh
 ```
 
+- Homebrew로 설치할 수도 있습니다:
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+- 저장소 이름이 `homebrew-cancerbroker`가 아니라서 explicit tap URL이 필요한 환경이라면:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+```
+
+- Homebrew 제거:
+
+```bash
+brew uninstall opencode-session-memory-sidebar-installer
+```
+
 - npm publish 이후 지원할 예정인 패키지 실행 방식:
 
 ```bash
@@ -98,7 +117,7 @@ opencode --restart
   - 실제 플러그인 패키지 `opencode-session-memory-sidebar`를 먼저 publish 합니다.
   - 그 다음 installer 패키지 `opencode-session-memory-sidebar-installer`를 publish 합니다.
   - 둘은 버전을 독립적으로 올릴 수 있지만, installer 기본 대상 패키지명은 실제 publish 이름과 항상 맞춰야 합니다.
-  - Homebrew 경로도 public 저장소 기준으로 이어서 진행합니다.
+  - Homebrew 경로도 public 저장소 기준으로 사용할 수 있습니다.
 
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 
