@@ -213,7 +213,9 @@ mod tests {
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
         CompletionStateSnapshot,
     };
-    use crate::config::GuardianConfig;
+    use crate::config::{
+        CompletionCleanupPolicy, GuardianConfig, SafetyPolicy, SamplingPolicy, StoragePolicy,
+    };
 
     fn status_event(session_id: &str, source: CompletionSource) -> CompletionEvent {
         CompletionEvent {
@@ -265,11 +267,21 @@ mod tests {
         )
         .expect("state file should be written");
 
-        let mut config = GuardianConfig::default();
-        config.storage.allowlist = vec![allowlist.clone()];
-        config.completion.state_path = state_path;
-        config.completion.cleanup_retry_interval_secs = 9;
-        config.sampling.active_session_grace_minutes = 3;
+        let config = GuardianConfig {
+            storage: StoragePolicy {
+                allowlist: vec![allowlist.clone()],
+            },
+            sampling: SamplingPolicy {
+                active_session_grace_minutes: 3,
+                ..SamplingPolicy::default()
+            },
+            completion: CompletionCleanupPolicy {
+                state_path,
+                cleanup_retry_interval_secs: 9,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let engine = build_cleanup_engine(&config).expect("engine should build");
         let settings = build_cleanup_settings(&config);
@@ -289,8 +301,12 @@ mod tests {
         let artifact = dir.path().join("ses_alpha_artifact.json");
         fs::write(&artifact, "{}").expect("artifact should be written");
 
-        let mut config = GuardianConfig::default();
-        config.storage.allowlist = vec![dir.path().to_path_buf()];
+        let config = GuardianConfig {
+            storage: StoragePolicy {
+                allowlist: vec![dir.path().to_path_buf()],
+            },
+            ..GuardianConfig::default()
+        };
 
         let resolver = build_resolver(&config).expect("resolver should build");
         let resolved = resolver.resolve(&status_event(
@@ -305,10 +321,17 @@ mod tests {
     #[test]
     fn process_event_batch_skips_disabled_sources() {
         let dir = tempdir().expect("tempdir");
-        let mut config = GuardianConfig::default();
-        config.storage.allowlist = vec![dir.path().to_path_buf()];
-        config.completion.enabled_sources = vec![CompletionSource::Status];
-        config.completion.state_path = dir.path().join("state.json");
+        let config = GuardianConfig {
+            storage: StoragePolicy {
+                allowlist: vec![dir.path().to_path_buf()],
+            },
+            completion: CompletionCleanupPolicy {
+                enabled_sources: vec![CompletionSource::Status],
+                state_path: dir.path().join("state.json"),
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let mut engine = build_cleanup_engine(&config).expect("engine should build");
         let processed = process_event_batch(
@@ -324,10 +347,17 @@ mod tests {
     #[test]
     fn run_reconciliation_cycle_skips_when_inferred_source_disabled() {
         let dir = tempdir().expect("tempdir");
-        let mut config = GuardianConfig::default();
-        config.storage.allowlist = vec![dir.path().to_path_buf()];
-        config.completion.enabled_sources = vec![CompletionSource::Status];
-        config.completion.state_path = dir.path().join("state.json");
+        let config = GuardianConfig {
+            storage: StoragePolicy {
+                allowlist: vec![dir.path().to_path_buf()],
+            },
+            completion: CompletionCleanupPolicy {
+                enabled_sources: vec![CompletionSource::Status],
+                state_path: dir.path().join("state.json"),
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let mut engine = build_cleanup_engine(&config).expect("engine should build");
         let reconciled = run_reconciliation_cycle(&config, &mut engine)
@@ -345,11 +375,17 @@ mod tests {
 
     #[test]
     fn build_cleanup_settings_uses_current_uid_and_markers() {
-        let mut config = GuardianConfig::default();
-        config.safety.required_command_markers =
-            vec!["opencode".to_string(), "subagent".to_string()];
-        config.safety.same_uid_only = false;
-        config.completion.cleanup_retry_interval_secs = 5;
+        let config = GuardianConfig {
+            safety: SafetyPolicy {
+                required_command_markers: vec!["opencode".to_string(), "subagent".to_string()],
+                same_uid_only: false,
+            },
+            completion: CompletionCleanupPolicy {
+                cleanup_retry_interval_secs: 5,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let settings = build_cleanup_settings(&config);
 

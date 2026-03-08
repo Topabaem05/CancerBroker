@@ -200,7 +200,7 @@ mod tests {
 
     use super::{CompletionEventListener, IpcError, handle_read_only_request};
     use crate::completion::CompletionSource;
-    use crate::config::{GuardianConfig, Mode};
+    use crate::config::{GuardianConfig, IpcConfig, Mode};
 
     #[test]
     fn read_only_request_requires_ipc_to_be_enabled() {
@@ -212,8 +212,13 @@ mod tests {
 
     #[test]
     fn read_only_request_rejects_unknown_commands() {
-        let mut config = GuardianConfig::default();
-        config.ipc.enabled = true;
+        let config = GuardianConfig {
+            ipc: IpcConfig {
+                enabled: true,
+                ..IpcConfig::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let error =
             handle_read_only_request(&config, "ping").expect_err("unsupported request should fail");
@@ -223,9 +228,14 @@ mod tests {
 
     #[test]
     fn read_only_request_serializes_current_mode() {
-        let mut config = GuardianConfig::default();
-        config.ipc.enabled = true;
-        config.mode = Mode::Enforce;
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            ipc: IpcConfig {
+                enabled: true,
+                ..IpcConfig::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let payload =
             handle_read_only_request(&config, "status").expect("status request should work");
