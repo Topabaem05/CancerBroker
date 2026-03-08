@@ -165,14 +165,16 @@ mod tests {
         Cli, Command, build_daemon_run_options, build_runtime_input, build_status_output,
         default_signal_windows, render_daemon_output, render_runtime_output, render_status_output,
     };
-    use crate::config::{GuardianConfig, Mode};
+    use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
     use crate::daemon::DaemonOutput;
     use crate::runtime::RuntimeOutcome;
 
     #[test]
     fn status_output_renders_human_and_json_modes() {
-        let mut config = GuardianConfig::default();
-        config.mode = Mode::Enforce;
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            ..GuardianConfig::default()
+        };
         let output = build_status_output(&config);
 
         assert_eq!(
@@ -187,9 +189,14 @@ mod tests {
 
     #[test]
     fn default_signal_windows_follow_sampling_thresholds() {
-        let mut config = GuardianConfig::default();
-        config.sampling.breach_required_samples = 4;
-        config.sampling.breach_window_samples = 7;
+        let config = GuardianConfig {
+            sampling: SamplingPolicy {
+                breach_required_samples: 4,
+                breach_window_samples: 7,
+                ..SamplingPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let windows = default_signal_windows(&config);
 
@@ -236,8 +243,13 @@ mod tests {
 
     #[test]
     fn daemon_run_options_use_minimum_one_second_idle_timeout() {
-        let mut config = GuardianConfig::default();
-        config.completion.reconciliation_interval_secs = 0;
+        let config = GuardianConfig {
+            completion: CompletionCleanupPolicy {
+                reconciliation_interval_secs: 0,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
 
         let options = build_daemon_run_options(&config, 8);
 

@@ -143,8 +143,10 @@ mod tests {
 
     #[test]
     fn build_decision_input_copies_runtime_fields() {
-        let mut config = GuardianConfig::default();
-        config.mode = Mode::Enforce;
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            ..GuardianConfig::default()
+        };
         let input = sample_runtime_input(PathBuf::from("/tmp/evidence"));
 
         let decision_input = build_decision_input(&config, &input);
@@ -229,8 +231,10 @@ mod tests {
     #[test]
     fn run_once_executes_action_in_enforce_mode_without_recent_history() {
         let dir = tempdir().expect("tempdir");
-        let mut config = GuardianConfig::default();
-        config.mode = Mode::Enforce;
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            ..GuardianConfig::default()
+        };
 
         let outcome = run_once(&config, sample_runtime_input(dir.path().to_path_buf()));
 
@@ -242,8 +246,10 @@ mod tests {
     #[test]
     fn run_once_blocks_execution_when_recent_history_hits_budget() {
         let dir = tempdir().expect("tempdir");
-        let mut config = GuardianConfig::default();
-        config.mode = Mode::Enforce;
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            ..GuardianConfig::default()
+        };
         let mut input = sample_runtime_input(dir.path().to_path_buf());
         input.now = UNIX_EPOCH + Duration::from_secs(3600);
         input.history = vec![ActionHistoryRecord {
