@@ -1,0 +1,26 @@
+{
+  "name": "opencode-session-memory-sidebar",
+  "version": "0.1.0",
+  "description": "Session Memory sidebar plugin for OpenCode",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "bun test"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/bun": "latest",
+    "typescript": "^5.5.0"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "sidebar",
+    "memory"
+  ],
+  "license": "MIT"
+}

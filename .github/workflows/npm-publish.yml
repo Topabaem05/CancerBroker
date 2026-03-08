@@ -1,0 +1,143 @@
+name: npm-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to publish both npm packages'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  validate-packages:
+    if: ${{ github.event.inputs.confirm == 'publish' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install plugin package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
+      - name: Typecheck plugin package
+        run: bunx tsc --noEmit -p tsconfig.json
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
+      - name: Smoke import plugin package
+        run: bun -e "import plugin from './src/index.ts'; console.log(typeof plugin)"
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
+      - name: Install installer package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Smoke test installer config flow
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/install.mjs
+          OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/install.mjs
+          OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/uninstall.mjs
+          OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/uninstall.mjs
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Smoke test installer JSONC preservation
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          cat > "$TMP_DIR/opencode.json" <<'EOF'
+          // comment
+          {
+            "plugin": [
+              "existing-plugin",
+            ],
+          }
+          EOF
+          OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/install.mjs
+          grep 'opencode-session-memory-sidebar' "$TMP_DIR/opencode.json"
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+  publish-plugin:
+    if: ${{ github.event.inputs.confirm == 'publish' }}
+    needs: validate-packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install plugin package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
+      - name: Publish plugin package
+        run: npm publish --provenance
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-installer:
+    if: ${{ github.event.inputs.confirm == 'publish' }}
+    needs:
+      - validate-packages
+      - publish-plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install installer package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Publish installer package
+        run: npm publish --provenance
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

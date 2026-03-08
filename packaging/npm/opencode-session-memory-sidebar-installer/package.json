@@ -1,0 +1,27 @@
+{
+  "name": "opencode-session-memory-sidebar-installer",
+  "version": "0.1.0",
+  "description": "Clone-free config installer for OpenCode Session Memory sidebar plugin",
+  "type": "module",
+  "bin": {
+    "opencode-session-memory-sidebar-installer": "./bin/install.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "install-local": "node ./bin/install.mjs",
+    "uninstall-local": "node ./bin/uninstall.mjs"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "sidebar",
+    "memory"
+  ],
+  "license": "MIT"
+}
