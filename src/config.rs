@@ -143,6 +143,7 @@ pub struct CompletionCleanupPolicy {
     pub cleanup_retry_interval_secs: u64,
     pub reconciliation_interval_secs: u64,
     pub daemon_socket_path: PathBuf,
+    pub state_path: PathBuf,
 }
 
 impl Default for CompletionCleanupPolicy {
@@ -160,6 +161,7 @@ impl Default for CompletionCleanupPolicy {
             cleanup_retry_interval_secs: 15,
             reconciliation_interval_secs: 60,
             daemon_socket_path: PathBuf::from("/tmp/opencode-guardian-completion.sock"),
+            state_path: PathBuf::from("/tmp/opencode-guardian-completion-state.json"),
         }
     }
 }
