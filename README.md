@@ -154,6 +154,43 @@ cargo run -- --config fixtures/config/observe-only.toml run-once --json
 cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
 ```
 
+## OpenCode Session Memory Sidebar Plugin (Korean)
+
+- 사이드바 플러그인 목적:
+  - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `Session Memory` 패널로 표시합니다.
+  - 토큰/컨텍스트 사용량과 RAM 상태를 함께 보여주며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 숫자 대신 `unavailable` 상태를 표시합니다.
+
+- 설치 위치 (전역):
+
+```bash
+ls ~/.config/opencode/plugins/opencode-session-memory-sidebar.ts
+ls ~/.config/opencode/plugins/opencode-session-memory-sidebar
+```
+
+- 플러그인 테스트:
+
+```bash
+cd ~/.config/opencode/plugins/opencode-session-memory-sidebar
+bun install
+bun test
+```
+
+- OpenCode 재시작:
+
+```bash
+opencode --restart
+```
+
+- 화면에서 확인할 항목:
+  - 패널 제목: `Session Memory`
+  - 요약 항목: `Live`, `Exact RAM`, `Exact Total`, `Unavailable`
+  - 세션 행: `Current <session-id>`, `Other <session-id>`
+
+- 참고:
+  - 폴링 주기는 5초(`5000ms`)입니다.
+  - exact RAM 합계는 `mappingState=exact` 행만 합산합니다.
+  - 검증 로그/증적은 이 저장소의 `.sisyphus/evidence/` 아래에 기록되어 있습니다.
+
 ### Japanese
 
 - 現在の動作モードを確認します:
