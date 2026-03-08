@@ -125,7 +125,7 @@
     - `cargo test -p opencode-guardian --test completion_resolution -- --exact unrelated_tool_part_completion_does_not_trigger_cleanup`
     - `cargo test -p opencode-guardian --test completion_resolution -- --exact unresolved_child_session_defers_to_reconciliation`
 
-- [ ] 4. Wire event-driven cleanup with reconciliation fallback
+- [x] 4. Wire event-driven cleanup with reconciliation fallback
   - Add daemon/runtime loop that performs immediate cleanup on completion event and periodic reconciliation for missed events.
   - Ensure reconciliation never widens scope beyond the same safety rules.
   - Acceptance:
@@ -134,7 +134,7 @@
     - `cargo test -p opencode-guardian --test task_complete_cleanup -- --exact completion_event_respects_active_session_grace`
     - `cargo test -p opencode-guardian --test task_complete_cleanup -- --exact daemon_mode_starts_dispatch_loop`
 
-- [ ] 5. Add end-to-end daemon scenarios
+- [x] 5. Add end-to-end daemon scenarios
   - Add fixtures that simulate:
     - event arrives once and cleanup runs immediately
     - event arrives twice and cleanup runs once
