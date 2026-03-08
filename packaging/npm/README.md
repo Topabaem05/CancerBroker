@@ -91,6 +91,16 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 - If both packages change in one release, publish the plugin package first, then the installer package.
 - Keep the installer's default package target aligned with the actual published plugin package name.
 
+## Release Automation
+
+Prepare the installer release files in one step:
+
+```bash
+node ./scripts/prepare-installer-release.mjs 0.1.1
+```
+
+That command updates the installer package version, rebuilds the standalone asset, refreshes the Homebrew formula `sha256`, and rewrites the versioned release-asset URLs in docs.
+
 ## GitHub Actions Publish Flow
 
 - Workflow file: `.github/workflows/npm-publish.yml`
@@ -104,9 +114,9 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 
 ### Release Checklist
 
-1. Update the version field in each package that changed
-2. Verify local checks pass
-3. Run the `npm-publish` workflow with `confirm=publish`
+1. Run `node ./scripts/prepare-installer-release.mjs <version>`
+2. Review changes and push `main`
+3. Run the `npm-publish` workflow with `confirm=publish` if the installer package itself should be published to npm
 4. Push tag `opencode-session-memory-sidebar-installer-v<version>` or run `.github/workflows/release-installer-asset.yml`
 5. Test clone-free public install with:
 
@@ -130,3 +140,4 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 - Installer supports global config by default and project config with `--project`.
 - Homebrew formula is available from the public repository tap.
 - Release assets are published by `.github/workflows/release-installer-asset.yml`.
+- Release prep is automated by `scripts/prepare-installer-release.mjs`.

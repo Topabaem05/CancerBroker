@@ -74,6 +74,16 @@ Current versioned release asset URL used by the formula:
 https://github.com/Topabaem05/CancerBroker/releases/download/opencode-session-memory-sidebar-installer-v0.1.0/opencode-session-memory-sidebar-installer.cjs
 ```
 
+## Release automation
+
+Prepare the next installer release from the repository root:
+
+```bash
+node ./scripts/prepare-installer-release.mjs 0.1.1
+```
+
+It updates `package.json`, rebuilds the standalone installer, refreshes the Homebrew formula `sha256`, and rewrites versioned release-asset URLs in docs before you commit and tag the release.
+
 ## Future npm path
 
 After the installer package is published to npm, these package-exec commands will be supported too:
@@ -148,3 +158,4 @@ session-memory-plugin remove
 - Restart OpenCode after install/uninstall: `opencode --restart`
 - Homebrew formula path: `brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer`
 - Release asset workflow: `.github/workflows/release-installer-asset.yml`
+- Release prep command: `node ./scripts/prepare-installer-release.mjs <version>`

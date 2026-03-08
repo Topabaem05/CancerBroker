@@ -75,9 +75,11 @@ Working directory: `packaging/npm/opencode-session-memory-sidebar-installer`
 - Local install flow: `node ./bin/install.mjs`
 - Local uninstall flow: `node ./bin/uninstall.mjs`
 - Smoke test: `TMP_DIR="$(mktemp -d)" && OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/install.mjs && OPENCODE_CONFIG_DIR="$TMP_DIR" node ./bin/uninstall.mjs`
+- Prepare next installer release: `node ./scripts/prepare-installer-release.mjs 0.1.1`
 
 ### Publish Workflow Facts
 - Workflow file: `.github/workflows/npm-publish.yml`
+- Release asset workflow: `.github/workflows/release-installer-asset.yml`
 - Validation runs plugin checks before installer checks.
 - Publish order is plugin package first, installer package second.
 - Validation includes plugin typecheck and installer smoke tests.
@@ -171,6 +173,7 @@ Applies mainly to `packaging/npm/opencode-session-memory-sidebar` and installer 
 - After Rust edits: run `cargo fmt --all -- --check`, targeted `cargo test`, and usually `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
 - After plugin edits: run `bunx tsc --noEmit -p tsconfig.json` and the smoke import.
 - After installer edits: run the temp-dir install/uninstall smoke test.
+- Before tagging a new installer release: run `node ./scripts/prepare-installer-release.mjs <version>` and verify the rebuilt standalone asset.
 - Prefer repository patterns over generic framework advice.
 - Prefer extending existing helpers over adding new abstractions.
 - Prefer inline unit tests over new harnesses unless cross-module coverage is truly required.

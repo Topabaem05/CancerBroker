@@ -128,6 +128,14 @@ opencode --restart
   - Homebrew 경로도 public 저장소 기준으로 사용할 수 있습니다.
   - release asset은 `.github/workflows/release-installer-asset.yml`과 installer tag로 관리합니다.
 
+- 다음 installer release 준비 자동화:
+
+```bash
+node ./scripts/prepare-installer-release.mjs 0.1.1
+```
+
+- 이 명령은 installer 버전, standalone asset, Homebrew formula `sha256`, 문서의 versioned release URL을 한 번에 갱신합니다.
+
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 
 ```bash
