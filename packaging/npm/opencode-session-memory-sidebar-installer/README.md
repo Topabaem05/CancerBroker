@@ -6,7 +6,35 @@ This package does not copy files into the plugin directory. Instead, it edits `o
 
 ## Install (no git clone)
 
-Current private-repo flow for authenticated collaborators:
+Current public bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+```
+
+- Requirements:
+  - `node` or `bun` installed locally
+
+Reviewable two-step variant:
+
+```bash
+curl -fsSL -o /tmp/opencode-session-memory-sidebar.sh https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh
+sh /tmp/opencode-session-memory-sidebar.sh
+```
+
+Project-local config:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --project
+```
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- uninstall
+```
+
+## Authenticated fallback
 
 ```bash
 gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
@@ -15,35 +43,7 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
   | sh
 ```
 
-- Requirements:
-  - `gh` authenticated with access to this repository
-  - `node` or `bun` installed locally
-
-Project-local config:
-
-```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- --project
-```
-
-## Uninstall
-
-```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- uninstall
-```
-
-## Future public bootstrap path
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
-```
-
-Use the curl form only after the repository or release asset is publicly reachable. In the current private-repo setup, the bootstrap script falls back to `gh api` for authenticated access.
+The bootstrap script itself still falls back to `gh api` if direct raw downloads fail.
 
 ## Future npm path
 
@@ -117,4 +117,4 @@ session-memory-plugin remove
 - Supports JSONC comments/trailing commas
 - Creates a timestamped backup before write
 - Restart OpenCode after install/uninstall: `opencode --restart`
-- Homebrew is not active yet for this private repo; it needs a public tap or release-distribution strategy first
+- Homebrew support is planned via the public repository tap

@@ -10,35 +10,33 @@
   - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `Session Memory` 패널로 표시합니다.
   - 토큰/컨텍스트 사용량과 RAM 상태를 함께 보여주며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 숫자 대신 `unavailable` 상태를 표시합니다.
 
-- 현재 private 저장소에서 가장 쉬운 설치 방법 (git clone 불필요, GitHub CLI 인증 필요):
+- 가장 쉬운 설치 방법 (git clone 불필요):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+opencode --restart
+```
+
+- 요구 사항:
+  - `node` 또는 `bun`이 설치되어 있어야 합니다.
+
+- 스크립트를 먼저 내려받아 확인한 뒤 실행하고 싶다면:
+
+```bash
+curl -fsSL -o /tmp/opencode-session-memory-sidebar.sh https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh
+sh /tmp/opencode-session-memory-sidebar.sh
+opencode --restart
+```
+
+- 이 방식은 저장소를 clone하지 않고, GitHub에 올라간 standalone installer를 받아 바로 설정만 반영합니다.
+
+- raw 다운로드가 실패하는 환경에서는 인증된 GitHub CLI fallback도 사용할 수 있습니다:
 
 ```bash
 gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
   | tr -d '\n' \
   | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
   | sh
-opencode --restart
-```
-
-- 요구 사항:
-  - `gh`가 로그인되어 있고 이 저장소에 접근 권한이 있어야 합니다.
-  - `node` 또는 `bun`이 설치되어 있어야 합니다.
-
-- 프로젝트 로컬 설정에만 추가하려면:
-
-```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- --project
-```
-
-- 이 방식은 저장소를 clone하지 않고, `gh api`로 bootstrap script와 standalone installer를 받아 바로 설정만 반영합니다.
-
-- 저장소 또는 release asset이 public 해지면 다음처럼 `curl` bootstrap도 사용할 수 있습니다:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
 ```
 
 - npm publish 이후 지원할 예정인 패키지 실행 방식:
@@ -51,10 +49,7 @@ npx --yes opencode-session-memory-sidebar-installer
 - npm scope를 붙여 배포할 경우:
 
 ```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- --package @your-scope/opencode-session-memory-sidebar
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package @your-scope/opencode-session-memory-sidebar
 ```
 
 - 위 명령이 하는 일:
@@ -65,10 +60,7 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
 - 프로젝트 로컬로만 추가하고 싶을 때:
 
 ```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- --project
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --project
 ```
 
 - 이 저장소에서 로컬 개발용으로 더 편하게 추가/제거할 때:
@@ -93,10 +85,7 @@ session-memory-plugin remove
 - 제거:
 
 ```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- uninstall
 opencode --restart
 ```
 
@@ -109,7 +98,7 @@ opencode --restart
   - 실제 플러그인 패키지 `opencode-session-memory-sidebar`를 먼저 publish 합니다.
   - 그 다음 installer 패키지 `opencode-session-memory-sidebar-installer`를 publish 합니다.
   - 둘은 버전을 독립적으로 올릴 수 있지만, installer 기본 대상 패키지명은 실제 publish 이름과 항상 맞춰야 합니다.
-  - Homebrew 경로는 public tap 또는 public release asset 기반 배포가 준비된 뒤에 진행합니다.
+  - Homebrew 경로도 public 저장소 기준으로 이어서 진행합니다.
 
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 

@@ -9,19 +9,19 @@
 
 - `opencode-session-memory-sidebar-installer`
   - Small CLI package for clone-free installation.
-  - Immediate collaborator command for this private repository:
+  - Current public bootstrap command:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+    ```
+
+  - Authenticated fallback if raw fetches fail:
 
     ```bash
     gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
       | tr -d '\n' \
       | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
       | sh
-    ```
-
-  - Future public bootstrap after public release or public repo exposure:
-
-    ```bash
-    curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
     ```
 
   - Planned package-exec command after npm publication:
@@ -38,16 +38,16 @@
 
 ## Install Channels
 
-1. Current private-repo path: authenticated `gh api` bootstrap downloads the installer without cloning the repo.
-2. Future public curl path: available once the repository or release asset is publicly reachable.
+1. Current public curl path: bootstrap script downloads the installer without cloning the repo.
+2. Authenticated fallback path: `gh api` can bootstrap the same script if raw fetches fail.
 3. Future npm path: `bunx` / `npx` once both packages are published.
-4. Future Homebrew path: requires a public tap or release-backed formula source, so it is not implemented yet in this repo.
+4. Planned Homebrew path: public tap formula from this repository.
 
 ## Publish Order
 
 1. Publish `opencode-session-memory-sidebar`
 2. Publish `opencode-session-memory-sidebar-installer`
-3. User runs installer with authenticated `gh api`, future public curl bootstrap, or future package exec
+3. User runs installer with public curl bootstrap, authenticated fallback, or future package exec
 4. Installer appends `opencode-session-memory-sidebar` to `plugin` in `opencode.json`
 5. User runs `opencode --restart`
 6. OpenCode downloads and loads the plugin automatically
@@ -61,10 +61,7 @@ bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-se
 The bootstrap simply forwards installer flags, so the same scoped install works there too:
 
 ```bash
-gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-  | tr -d '\n' \
-  | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-  | sh -s -- --package @your-scope/opencode-session-memory-sidebar
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package @your-scope/opencode-session-memory-sidebar
 ```
 
 ## Version Policy
@@ -91,24 +88,14 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
 1. Update the version field in each package that changed
 2. Verify local checks pass
 3. Run the `npm-publish` workflow with `confirm=publish`
-4. Test clone-free authenticated install with:
-
-   ```bash
-   gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-sidebar.sh?ref=main" --jq .content \
-     | tr -d '\n' \
-     | node -e 'let data=""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => data += chunk); process.stdin.on("end", () => process.stdout.write(Buffer.from(data, "base64")));' \
-     | sh
-   opencode --restart
-   ```
-
-5. Test public curl install after the repo or release asset is public with:
+4. Test clone-free public install with:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
    opencode --restart
    ```
 
-6. Test npm package install after publish with:
+5. Test npm package install after publish with:
 
    ```bash
    bunx opencode-session-memory-sidebar-installer
@@ -121,4 +108,4 @@ gh api "repos/Topabaem05/CancerBroker/contents/install/opencode-session-memory-s
 - Installer preserves JSONC-compatible files.
 - Installer is idempotent for both install and uninstall.
 - Installer supports global config by default and project config with `--project`.
-- Homebrew is intentionally deferred until the installer can be fetched from a public tap or release asset.
+- Homebrew is planned now that the repository is public.
