@@ -84,4 +84,34 @@ impl ProcessInventory {
             .map(|process| process.memory_bytes)
             .sum()
     }
+
+    pub fn collect_live() -> Self {
+        use sysinfo::{ProcessesToUpdate, System};
+
+        let mut system = System::new_all();
+        system.refresh_processes(ProcessesToUpdate::All, true);
+
+        Self::from_samples(system.processes().values().map(|process| {
+            let command = if process.cmd().is_empty() {
+                process.name().to_string_lossy().into_owned()
+            } else {
+                process
+                    .cmd()
+                    .iter()
+                    .map(|part| part.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+
+            ProcessSample {
+                pid: process.pid().as_u32(),
+                parent_pid: process.parent().map(|pid| pid.as_u32()),
+                start_time_secs: process.start_time(),
+                uid: process.user_id().map(|uid| **uid),
+                memory_bytes: process.memory(),
+                cpu_percent: process.cpu_usage(),
+                command,
+            }
+        }))
+    }
 }
