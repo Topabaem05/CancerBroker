@@ -92,6 +92,30 @@ pub enum CompletionStoreBegin {
     SkipDuplicate,
 }
 
+fn take_required<T>(value: Option<T>, field: &'static str) -> Result<T, CompletionParseError> {
+    value.ok_or(CompletionParseError::MissingField(field))
+}
+
+fn build_completion_event(
+    source: CompletionSource,
+    event_id: String,
+    session_id: Option<String>,
+    parent_session_id: Option<String>,
+    task_id: Option<String>,
+    tool_name: Option<String>,
+    completed_at: String,
+) -> CompletionEvent {
+    CompletionEvent {
+        event_id,
+        session_id,
+        parent_session_id,
+        task_id,
+        tool_name,
+        completed_at,
+        source,
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CompletionStateStore {
     dedupe_ttl_secs: u64,
@@ -223,62 +247,167 @@ pub fn parse_completion_event(line: &str) -> Result<Option<CompletionEvent>, Com
     let raw: RawCompletionEvent = serde_json::from_str(line)
         .map_err(|error| CompletionParseError::Json(error.to_string()))?;
 
-    let event_id = raw
-        .event_id
-        .ok_or(CompletionParseError::MissingField("event_id"))?;
-    let completed_at = raw
-        .completed_at
-        .ok_or(CompletionParseError::MissingField("completed_at"))?;
+    let event_id = take_required(raw.event_id, "event_id")?;
+    let completed_at = take_required(raw.completed_at, "completed_at")?;
 
     match raw.event_type.as_str() {
-        "session.status" if raw.status.as_deref() == Some("idle") => Ok(Some(CompletionEvent {
-            event_id,
-            session_id: raw.session_id,
-            parent_session_id: None,
-            task_id: None,
-            tool_name: None,
-            completed_at,
-            source: CompletionSource::Status,
-        })),
-        "session.idle" => Ok(Some(CompletionEvent {
-            event_id,
-            session_id: raw.session_id,
-            parent_session_id: None,
-            task_id: None,
-            tool_name: None,
-            completed_at,
-            source: CompletionSource::Idle,
-        })),
-        "session.error" => Ok(Some(CompletionEvent {
-            event_id,
-            session_id: raw.session_id,
-            parent_session_id: None,
-            task_id: None,
-            tool_name: None,
-            completed_at,
-            source: CompletionSource::Error,
-        })),
-        "session.deleted" => Ok(Some(CompletionEvent {
-            event_id,
-            session_id: raw.session_id,
-            parent_session_id: None,
-            task_id: None,
-            tool_name: None,
-            completed_at,
-            source: CompletionSource::Deleted,
-        })),
-        "message.part.updated" if raw.part_status.as_deref() == Some("completed") => {
-            Ok(Some(CompletionEvent {
+        "session.status" if raw.status.as_deref() == Some("idle") => {
+            Ok(Some(build_completion_event(
+                CompletionSource::Status,
                 event_id,
-                session_id: raw.child_session_id,
-                parent_session_id: raw.parent_session_id,
-                task_id: raw.task_id,
-                tool_name: raw.tool_name,
+                raw.session_id,
+                None,
+                None,
+                None,
                 completed_at,
-                source: CompletionSource::ToolPartCompleted,
-            }))
+            )))
+        }
+        "session.idle" => Ok(Some(build_completion_event(
+            CompletionSource::Idle,
+            event_id,
+            raw.session_id,
+            None,
+            None,
+            None,
+            completed_at,
+        ))),
+        "session.error" => Ok(Some(build_completion_event(
+            CompletionSource::Error,
+            event_id,
+            raw.session_id,
+            None,
+            None,
+            None,
+            completed_at,
+        ))),
+        "session.deleted" => Ok(Some(build_completion_event(
+            CompletionSource::Deleted,
+            event_id,
+            raw.session_id,
+            None,
+            None,
+            None,
+            completed_at,
+        ))),
+        "message.part.updated" if raw.part_status.as_deref() == Some("completed") => {
+            Ok(Some(build_completion_event(
+                CompletionSource::ToolPartCompleted,
+                event_id,
+                raw.child_session_id,
+                raw.parent_session_id,
+                raw.task_id,
+                raw.tool_name,
+                completed_at,
+            )))
         }
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateStore,
+        CompletionStoreBegin, parse_completion_event,
+    };
+
+    fn sample_event(source: CompletionSource) -> CompletionEvent {
+        CompletionEvent {
+            event_id: "evt-1".to_string(),
+            session_id: Some("ses-1".to_string()),
+            parent_session_id: Some("ses-parent".to_string()),
+            task_id: Some("task-1".to_string()),
+            tool_name: Some("write".to_string()),
+            completed_at: "2026-03-08T20:00:00Z".to_string(),
+            source,
+        }
+    }
+
+    #[test]
+    fn parses_status_idle_event() {
+        let event = parse_completion_event(
+            r#"{"type":"session.status","event_id":"evt-1","session_id":"ses-1","status":"idle","completed_at":"2026-03-08T20:00:00Z"}"#,
+        )
+        .expect("status event should parse")
+        .expect("status event should map to a completion event");
+
+        assert_eq!(event.source, CompletionSource::Status);
+        assert_eq!(event.session_id.as_deref(), Some("ses-1"));
+        assert_eq!(event.parent_session_id, None);
+    }
+
+    #[test]
+    fn parses_tool_part_completed_event() {
+        let event = parse_completion_event(
+            r#"{"type":"message.part.updated","event_id":"evt-1","parent_session_id":"ses-parent","child_session_id":"ses-child","task_id":"task-1","tool_name":"write","part_status":"completed","completed_at":"2026-03-08T20:00:00Z"}"#,
+        )
+        .expect("tool part event should parse")
+        .expect("tool part event should map to a completion event");
+
+        assert_eq!(event.source, CompletionSource::ToolPartCompleted);
+        assert_eq!(event.session_id.as_deref(), Some("ses-child"));
+        assert_eq!(event.parent_session_id.as_deref(), Some("ses-parent"));
+        assert_eq!(event.task_id.as_deref(), Some("task-1"));
+        assert_eq!(event.tool_name.as_deref(), Some("write"));
+    }
+
+    #[test]
+    fn ignores_unsupported_event_types() {
+        let event = parse_completion_event(
+            r#"{"type":"message.created","event_id":"evt-1","completed_at":"2026-03-08T20:00:00Z"}"#,
+        )
+        .expect("unsupported event should still parse");
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn rejects_missing_required_fields() {
+        let error = parse_completion_event(
+            r#"{"type":"session.idle","session_id":"ses-1","completed_at":"2026-03-08T20:00:00Z"}"#,
+        )
+        .expect_err("missing event_id should fail");
+
+        assert_eq!(error.to_string(), "missing field: event_id");
+    }
+
+    #[test]
+    fn retries_pending_entries() {
+        let mut store = CompletionStateStore::new(60);
+        let event = sample_event(CompletionSource::Idle);
+
+        assert_eq!(store.begin(&event, 10), CompletionStoreBegin::Accepted);
+        assert_eq!(store.begin(&event, 20), CompletionStoreBegin::RetryPending);
+        assert_eq!(store.pending_keys(), vec![event.dedupe_key()]);
+    }
+
+    #[test]
+    fn skips_processed_duplicates_within_ttl() {
+        let mut store = CompletionStateStore::new(60);
+        let event = sample_event(CompletionSource::Error);
+
+        assert_eq!(store.begin(&event, 10), CompletionStoreBegin::Accepted);
+        store.mark_processed(&event, 20);
+
+        assert_eq!(store.begin(&event, 70), CompletionStoreBegin::SkipDuplicate);
+        let snapshot = store.snapshot();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].state, CompletionRecordState::Processed);
+    }
+
+    #[test]
+    fn reaccepts_processed_entries_after_ttl() {
+        let mut store = CompletionStateStore::new(60);
+        let event = sample_event(CompletionSource::Deleted);
+
+        assert_eq!(store.begin(&event, 10), CompletionStoreBegin::Accepted);
+        store.mark_processed(&event, 20);
+
+        assert_eq!(store.begin(&event, 81), CompletionStoreBegin::Accepted);
+        let snapshot = store.snapshot();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].state, CompletionRecordState::Pending);
+        assert_eq!(snapshot.entries[0].updated_at_unix_secs, 81);
     }
 }
 
