@@ -1,0 +1,67 @@
+name: release-installer-asset
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to upload the standalone installer asset to"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-installer-asset-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  upload-installer-asset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "Release tag is required" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Install installer package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Build standalone installer asset
+        run: bun run build:standalone
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Smoke test standalone installer asset
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          node ./dist/opencode-session-memory-sidebar-installer.cjs --config "$TMP_DIR/opencode.json"
+          node ./dist/opencode-session-memory-sidebar-installer.cjs uninstall --config "$TMP_DIR/opencode.json"
+        working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Upload standalone installer asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --clobber
