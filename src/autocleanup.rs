@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -9,10 +10,12 @@ use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_art
 use crate::completion::CompletionEvent;
 use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::{IpcError, receive_completion_events_once};
+use crate::monitor::storage::scan_allowlisted_roots;
 use crate::remediation::{
     ProcessRemediationOutcome, ProcessRemediationRequest, RemediationError, remediate_process,
 };
 use crate::resolution::ResolvedCandidates;
+use crate::resolution::session_ids_in_text;
 use crate::safety::OwnershipPolicy;
 
 #[derive(Debug, Clone)]
@@ -52,6 +55,7 @@ pub struct AutoCleanupEngine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DaemonCleanupOutput {
     pub processed_events: usize,
+    pub reconciled_events: usize,
 }
 
 #[derive(Debug, Error)]
@@ -101,6 +105,14 @@ impl AutoCleanupEngine {
             }
         }
     }
+
+    pub fn run_reconciliation_pass(
+        &mut self,
+        now: SystemTime,
+    ) -> Result<Vec<AutoCleanupResult>, AutoCleanupError> {
+        let events = infer_reconciliation_events(&self.settings.cleanup_policy.allowlist, now)?;
+        run_reconciliation(self, &events, now)
+    }
 }
 
 pub fn run_reconciliation(
@@ -148,9 +160,40 @@ pub async fn run_daemon_once_with_cleanup(
         engine.handle_completion_event(event, SystemTime::now())?;
     }
 
+    let reconciled_events = engine.run_reconciliation_pass(SystemTime::now())?.len();
+
     Ok(DaemonCleanupOutput {
         processed_events: events.len(),
+        reconciled_events,
     })
+}
+
+pub fn infer_reconciliation_events(
+    allowlisted_roots: &[PathBuf],
+    now: SystemTime,
+) -> Result<Vec<CompletionEvent>, std::io::Error> {
+    let snapshot = scan_allowlisted_roots(allowlisted_roots)?;
+    let mut session_ids = BTreeSet::new();
+
+    for artifact in &snapshot.artifacts {
+        let text = artifact.path.to_string_lossy();
+        for session_id in session_ids_in_text(&text) {
+            session_ids.insert(session_id);
+        }
+    }
+
+    Ok(session_ids
+        .into_iter()
+        .map(|session_id| CompletionEvent {
+            event_id: format!("inferred:{session_id}"),
+            session_id: Some(session_id),
+            parent_session_id: None,
+            task_id: None,
+            tool_name: None,
+            completed_at: unix_timestamp_secs(now).to_string(),
+            source: crate::completion::CompletionSource::Inferred,
+        })
+        .collect())
 }
 
 impl AutoCleanupEngine {

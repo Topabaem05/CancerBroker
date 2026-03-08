@@ -119,7 +119,7 @@ impl CandidateResolver {
     }
 }
 
-fn session_ids_in_text(text: &str) -> Vec<String> {
+pub(crate) fn session_ids_in_text(text: &str) -> Vec<String> {
     text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
         .filter(|part| part.starts_with("ses_") && part.len() > 4)
         .map(ToOwned::to_owned)
