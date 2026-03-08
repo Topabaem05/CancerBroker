@@ -1,4 +1,4 @@
-import { applyEdits, modify, parse } from "jsonc-parser";
+import { applyEdits, modify, parse } from "jsonc-parser/lib/esm/main.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
