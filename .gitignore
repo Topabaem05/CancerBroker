@@ -1,2 +1,7 @@
 target/
 tests/
+packaging/npm/**/node_modules/
+.sisyphus/drafts/
+.sisyphus/evidence/
+.sisyphus/notepads/
+.sisyphus/plans/opencode-sidebar-memory-monitor.md
