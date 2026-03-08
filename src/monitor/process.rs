@@ -23,6 +23,20 @@ pub struct ProcessInventory {
     children_by_parent: BTreeMap<u32, Vec<u32>>,
 }
 
+fn normalize_children(children_by_parent: &mut BTreeMap<u32, Vec<u32>>) {
+    for children in children_by_parent.values_mut() {
+        children.sort_unstable();
+        children.dedup();
+    }
+}
+
+fn build_process_fingerprint(process: &ProcessSample) -> ProcessFingerprint {
+    ProcessFingerprint {
+        start_time_secs: process.start_time_secs,
+        command: process.command.clone(),
+    }
+}
+
 impl ProcessInventory {
     pub fn from_samples(samples: impl IntoIterator<Item = ProcessSample>) -> Self {
         let mut processes = BTreeMap::new();
@@ -38,10 +52,7 @@ impl ProcessInventory {
             processes.insert(sample.pid, sample);
         }
 
-        for children in children_by_parent.values_mut() {
-            children.sort_unstable();
-            children.dedup();
-        }
+        normalize_children(&mut children_by_parent);
 
         Self {
             processes,
@@ -65,10 +76,7 @@ impl ProcessInventory {
     }
 
     pub fn process_fingerprint(&self, pid: u32) -> Option<ProcessFingerprint> {
-        self.processes.get(&pid).map(|process| ProcessFingerprint {
-            start_time_secs: process.start_time_secs,
-            command: process.command.clone(),
-        })
+        self.processes.get(&pid).map(build_process_fingerprint)
     }
 
     pub fn is_same_process_instance(&self, pid: u32, start_time_secs: u64) -> bool {
@@ -113,5 +121,123 @@ impl ProcessInventory {
                 command,
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProcessFingerprint, ProcessInventory, ProcessSample, build_process_fingerprint};
+
+    fn sample_processes() -> Vec<ProcessSample> {
+        vec![
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                start_time_secs: 100,
+                uid: Some(501),
+                memory_bytes: 512,
+                cpu_percent: 0.5,
+                command: "opencode ses_alpha worker".to_string(),
+            },
+            ProcessSample {
+                pid: 11,
+                parent_pid: Some(1),
+                start_time_secs: 110,
+                uid: Some(501),
+                memory_bytes: 256,
+                cpu_percent: 0.2,
+                command: "opencode ses_beta child".to_string(),
+            },
+            ProcessSample {
+                pid: 12,
+                parent_pid: Some(1),
+                start_time_secs: 120,
+                uid: Some(501),
+                memory_bytes: 128,
+                cpu_percent: 0.1,
+                command: "opencode ses_beta child-duplicate-parent".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn from_samples_normalizes_duplicate_children() {
+        let mut processes = sample_processes();
+        processes.push(ProcessSample {
+            pid: 11,
+            parent_pid: Some(1),
+            start_time_secs: 111,
+            uid: Some(501),
+            memory_bytes: 300,
+            cpu_percent: 0.3,
+            command: "opencode ses_beta child-replaced".to_string(),
+        });
+
+        let inventory = ProcessInventory::from_samples(processes);
+
+        assert_eq!(inventory.children_of(1), vec![10, 11, 12]);
+        assert_eq!(
+            inventory
+                .sample(11)
+                .expect("pid 11 should exist")
+                .memory_bytes,
+            300
+        );
+    }
+
+    #[test]
+    fn build_process_fingerprint_copies_identity_fields() {
+        let sample = sample_processes().remove(0);
+
+        assert_eq!(
+            build_process_fingerprint(&sample),
+            ProcessFingerprint {
+                start_time_secs: 100,
+                command: "opencode ses_alpha worker".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn process_fingerprint_and_instance_checks_follow_stored_sample() {
+        let inventory = ProcessInventory::from_samples(sample_processes());
+
+        assert_eq!(
+            inventory.process_fingerprint(10),
+            Some(ProcessFingerprint {
+                start_time_secs: 100,
+                command: "opencode ses_alpha worker".to_string(),
+            })
+        );
+        assert!(inventory.is_same_process_instance(10, 100));
+        assert!(!inventory.is_same_process_instance(10, 101));
+        assert_eq!(inventory.process_fingerprint(999), None);
+    }
+
+    #[test]
+    fn total_memory_bytes_sums_all_samples() {
+        let inventory = ProcessInventory::from_samples(sample_processes());
+
+        assert_eq!(inventory.total_memory_bytes(), 896);
+    }
+
+    #[test]
+    fn collect_live_includes_current_process() {
+        let inventory = ProcessInventory::collect_live();
+        let current_pid = std::process::id();
+        let sample = inventory
+            .sample(current_pid)
+            .expect("current process should be present in live inventory");
+
+        assert_eq!(sample.pid, current_pid);
+        assert!(!sample.command.is_empty());
+        assert!(inventory.total_memory_bytes() >= sample.memory_bytes);
+        assert_eq!(
+            inventory.process_fingerprint(current_pid),
+            Some(ProcessFingerprint {
+                start_time_secs: sample.start_time_secs,
+                command: sample.command.clone(),
+            })
+        );
     }
 }
