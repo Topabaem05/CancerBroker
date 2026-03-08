@@ -1,0 +1,9 @@
+- [Home](README.md)
+- README by Language
+  - [Language Index](readme-pages/index.md)
+  - [English](readme-pages/english.md)
+  - [中文](readme-pages/chinese.md)
+  - [Español](readme-pages/spanish.md)
+  - [한국어](readme-pages/korean.md)
+    - [한국어 플러그인 가이드](readme-pages/korean-plugin-guide.md)
+  - [日本語](readme-pages/japanese.md)
