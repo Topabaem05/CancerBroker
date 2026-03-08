@@ -304,6 +304,49 @@ pub fn parse_completion_event(line: &str) -> Result<Option<CompletionEvent>, Com
     }
 }
 
+pub fn load_completion_state(
+    path: &Path,
+    dedupe_ttl_secs: u64,
+) -> Result<CompletionStateStore, CompletionStateIoError> {
+    if !path.exists() {
+        return Ok(CompletionStateStore::new(dedupe_ttl_secs));
+    }
+
+    let content = fs::read_to_string(path).map_err(|source| CompletionStateIoError::Io {
+        path: path.display().to_string(),
+        source,
+    })?;
+    let snapshot: CompletionStateSnapshot =
+        serde_json::from_str(&content).map_err(|source| CompletionStateIoError::Parse {
+            path: path.display().to_string(),
+            source,
+        })?;
+
+    Ok(CompletionStateStore::from_snapshot(
+        dedupe_ttl_secs,
+        snapshot,
+    ))
+}
+
+pub fn persist_completion_state(
+    path: &Path,
+    store: &CompletionStateStore,
+) -> Result<(), CompletionStateIoError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| CompletionStateIoError::Io {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+
+    let json = serde_json::to_string_pretty(&store.snapshot())
+        .map_err(CompletionStateIoError::Serialize)?;
+    fs::write(path, json).map_err(|source| CompletionStateIoError::Io {
+        path: path.display().to_string(),
+        source,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -409,47 +452,4 @@ mod tests {
         assert_eq!(snapshot.entries[0].state, CompletionRecordState::Pending);
         assert_eq!(snapshot.entries[0].updated_at_unix_secs, 81);
     }
-}
-
-pub fn load_completion_state(
-    path: &Path,
-    dedupe_ttl_secs: u64,
-) -> Result<CompletionStateStore, CompletionStateIoError> {
-    if !path.exists() {
-        return Ok(CompletionStateStore::new(dedupe_ttl_secs));
-    }
-
-    let content = fs::read_to_string(path).map_err(|source| CompletionStateIoError::Io {
-        path: path.display().to_string(),
-        source,
-    })?;
-    let snapshot: CompletionStateSnapshot =
-        serde_json::from_str(&content).map_err(|source| CompletionStateIoError::Parse {
-            path: path.display().to_string(),
-            source,
-        })?;
-
-    Ok(CompletionStateStore::from_snapshot(
-        dedupe_ttl_secs,
-        snapshot,
-    ))
-}
-
-pub fn persist_completion_state(
-    path: &Path,
-    store: &CompletionStateStore,
-) -> Result<(), CompletionStateIoError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| CompletionStateIoError::Io {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    }
-
-    let json = serde_json::to_string_pretty(&store.snapshot())
-        .map_err(CompletionStateIoError::Serialize)?;
-    fs::write(path, json).map_err(|source| CompletionStateIoError::Io {
-        path: path.display().to_string(),
-        source,
-    })
 }
