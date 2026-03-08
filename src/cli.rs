@@ -4,9 +4,10 @@ use std::time::SystemTime;
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{Result, WrapErr};
 use serde::Serialize;
+use std::time::Duration;
 
 use crate::config::load_config;
-use crate::daemon::run_daemon_once;
+use crate::daemon::{DaemonRunOptions, run_daemon_loop};
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, run_once};
 
@@ -93,7 +94,16 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::Daemon { json, max_events } => {
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             let output = runtime
-                .block_on(run_daemon_once(&config, max_events))
+                .block_on(run_daemon_loop(
+                    &config,
+                    DaemonRunOptions {
+                        max_events_per_batch: max_events,
+                        max_cycles: None,
+                        idle_timeout: Duration::from_secs(
+                            config.completion.reconciliation_interval_secs.max(1),
+                        ),
+                    },
+                ))
                 .wrap_err("daemon run failure")?;
 
             if json {
