@@ -10,7 +10,7 @@ use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_art
 use crate::completion::{CompletionEvent, CompletionStateSnapshot};
 use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::{IpcError, receive_completion_events_once};
-use crate::monitor::storage::scan_allowlisted_roots;
+use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::remediation::{
     ProcessRemediationOutcome, ProcessRemediationRequest, RemediationError, remediate_process,
 };
@@ -181,26 +181,11 @@ pub fn infer_reconciliation_events(
     now: SystemTime,
 ) -> Result<Vec<CompletionEvent>, std::io::Error> {
     let snapshot = scan_allowlisted_roots(allowlisted_roots)?;
-    let mut session_ids = BTreeSet::new();
-
-    for artifact in &snapshot.artifacts {
-        let text = artifact.path.to_string_lossy();
-        for session_id in session_ids_in_text(&text) {
-            session_ids.insert(session_id);
-        }
-    }
+    let session_ids = collect_session_ids_from_snapshot(&snapshot);
 
     Ok(session_ids
         .into_iter()
-        .map(|session_id| CompletionEvent {
-            event_id: format!("inferred:{session_id}"),
-            session_id: Some(session_id),
-            parent_session_id: None,
-            task_id: None,
-            tool_name: None,
-            completed_at: unix_timestamp_secs(now).to_string(),
-            source: crate::completion::CompletionSource::Inferred,
-        })
+        .map(|session_id| build_inferred_completion_event(session_id, now))
         .collect())
 }
 
@@ -257,4 +242,85 @@ fn unix_timestamp_secs(now: SystemTime) -> u64 {
     now.duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))
         .as_secs()
+}
+
+fn collect_session_ids_from_snapshot(snapshot: &StorageSnapshot) -> BTreeSet<String> {
+    let mut session_ids = BTreeSet::new();
+
+    for artifact in &snapshot.artifacts {
+        let text = artifact.path.to_string_lossy();
+        for session_id in session_ids_in_text(&text) {
+            session_ids.insert(session_id);
+        }
+    }
+
+    session_ids
+}
+
+fn build_inferred_completion_event(session_id: String, now: SystemTime) -> CompletionEvent {
+    CompletionEvent {
+        event_id: format!("inferred:{session_id}"),
+        session_id: Some(session_id),
+        parent_session_id: None,
+        task_id: None,
+        tool_name: None,
+        completed_at: unix_timestamp_secs(now).to_string(),
+        source: crate::completion::CompletionSource::Inferred,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use tempfile::tempdir;
+
+    use super::{infer_reconciliation_events, unix_timestamp_secs};
+    use crate::completion::CompletionSource;
+
+    #[test]
+    fn infer_reconciliation_events_collects_unique_session_ids() {
+        let dir = tempdir().expect("tempdir");
+        let session_dir = dir.path().join("ses_alpha");
+        fs::create_dir_all(&session_dir).expect("session dir should exist");
+        fs::write(session_dir.join("artifact.json"), "{}").expect("artifact should be written");
+        fs::write(
+            dir.path().join("ses_beta_report.txt"),
+            "artifact for ses_beta",
+        )
+        .expect("second artifact should be written");
+        fs::write(session_dir.join("artifact-2.log"), "dup")
+            .expect("duplicate artifact should be written");
+
+        let events = infer_reconciliation_events(&[dir.path().to_path_buf()], UNIX_EPOCH)
+            .expect("reconciliation events should be inferred");
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_id, "inferred:ses_alpha");
+        assert_eq!(events[0].session_id.as_deref(), Some("ses_alpha"));
+        assert_eq!(events[0].completed_at, "0");
+        assert_eq!(events[0].source, CompletionSource::Inferred);
+        assert_eq!(events[1].event_id, "inferred:ses_beta_report");
+    }
+
+    #[test]
+    fn infer_reconciliation_events_ignores_non_session_artifacts() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(dir.path().join("artifact.json"), "{}").expect("artifact should be written");
+
+        let events = infer_reconciliation_events(&[dir.path().to_path_buf()], UNIX_EPOCH)
+            .expect("non-session artifacts should not fail");
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn unix_timestamp_secs_clamps_pre_epoch_times() {
+        let before_epoch = UNIX_EPOCH
+            .checked_sub(Duration::from_secs(1))
+            .expect("pre-epoch time should exist");
+
+        assert_eq!(unix_timestamp_secs(before_epoch), 0);
+    }
 }
