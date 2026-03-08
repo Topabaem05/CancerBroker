@@ -13,6 +13,7 @@ use crate::completion::{
 use crate::config::GuardianConfig;
 use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
+use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::scan_allowlisted_roots;
 use crate::resolution::{CandidateResolver, SessionArtifactIndex, SessionProcessIndex};
 use crate::safety::OwnershipPolicy;
@@ -126,9 +127,10 @@ fn build_cleanup_engine(config: &GuardianConfig) -> Result<AutoCleanupEngine, Ip
 fn build_resolver(config: &GuardianConfig) -> Result<CandidateResolver, IpcError> {
     let snapshot = scan_allowlisted_roots(&config.storage.allowlist)
         .map_err(|error| IpcError::Execution(error.to_string()))?;
+    let inventory = ProcessInventory::collect_live();
 
     Ok(CandidateResolver::new(
-        SessionProcessIndex::default(),
+        SessionProcessIndex::from_inventory(&inventory),
         SessionArtifactIndex::from_snapshot(&snapshot),
     ))
 }
