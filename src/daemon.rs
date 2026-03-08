@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::autocleanup::{AutoCleanupEngine, AutoCleanupSettings};
 use crate::cleanup::CleanupPolicy;
+use crate::completion::CompletionSource;
 use crate::completion::CompletionStateStore;
 use crate::config::GuardianConfig;
 use crate::dispatch::CleanupDispatcher;
@@ -19,6 +20,7 @@ pub struct DaemonOutput {
     pub socket_path: PathBuf,
     pub received_events: usize,
     pub processed_events: usize,
+    pub reconciled_events: usize,
 }
 
 pub async fn run_daemon_once(
@@ -70,9 +72,23 @@ pub async fn run_daemon_once(
         processed_events += 1;
     }
 
+    let reconciled_events = if config
+        .completion
+        .enabled_sources
+        .contains(&CompletionSource::Inferred)
+    {
+        engine
+            .run_reconciliation_pass(SystemTime::now())
+            .map_err(|error| IpcError::Execution(error.to_string()))?
+            .len()
+    } else {
+        0
+    };
+
     Ok(DaemonOutput {
         socket_path: config.completion.daemon_socket_path.clone(),
         received_events: events.len(),
         processed_events,
+        reconciled_events,
     })
 }

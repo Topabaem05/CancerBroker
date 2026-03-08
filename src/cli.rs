@@ -100,10 +100,11 @@ pub fn run(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string(&output)?);
             } else {
                 println!(
-                    "socket_path={} received_events={} processed_events={}",
+                    "socket_path={} received_events={} processed_events={} reconciled_events={}",
                     output.socket_path.display(),
                     output.received_events,
-                    output.processed_events
+                    output.processed_events,
+                    output.reconciled_events
                 );
             }
         }
