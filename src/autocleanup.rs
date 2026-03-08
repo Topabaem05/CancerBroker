@@ -1,0 +1,209 @@
+use std::path::Path;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use serde::Serialize;
+use thiserror::Error;
+use tokio::io::AsyncWriteExt;
+
+use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_artifacts};
+use crate::completion::CompletionEvent;
+use crate::dispatch::{CleanupDispatcher, DispatchDecision};
+use crate::ipc::{IpcError, receive_completion_events_once};
+use crate::remediation::{
+    ProcessRemediationOutcome, ProcessRemediationRequest, RemediationError, remediate_process,
+};
+use crate::resolution::ResolvedCandidates;
+use crate::safety::OwnershipPolicy;
+
+#[derive(Debug, Clone)]
+pub struct AutoCleanupSettings {
+    pub cleanup_policy: CleanupPolicy,
+    pub ownership_policy: OwnershipPolicy,
+    pub term_timeout: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoCleanupDecision {
+    ProcessedNow,
+    DeferredToReconciliation,
+    SkippedDuplicate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessCleanupResult {
+    pub pid: u32,
+    pub outcome: ProcessRemediationOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoCleanupResult {
+    pub decision: AutoCleanupDecision,
+    pub cleanup_outcome: CleanupOutcome,
+    pub process_outcomes: Vec<ProcessCleanupResult>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutoCleanupEngine {
+    dispatcher: CleanupDispatcher,
+    settings: AutoCleanupSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DaemonCleanupOutput {
+    pub processed_events: usize,
+}
+
+#[derive(Debug, Error)]
+pub enum AutoCleanupError {
+    #[error("cleanup_failed: {0}")]
+    Cleanup(#[from] std::io::Error),
+    #[error("remediation_failed: {0}")]
+    Remediation(#[from] RemediationError),
+    #[error("ipc_failed: {0}")]
+    Ipc(#[from] IpcError),
+}
+
+impl AutoCleanupEngine {
+    pub fn new(dispatcher: CleanupDispatcher, settings: AutoCleanupSettings) -> Self {
+        Self {
+            dispatcher,
+            settings,
+        }
+    }
+
+    pub fn handle_completion_event(
+        &mut self,
+        event: &CompletionEvent,
+        now: SystemTime,
+    ) -> Result<AutoCleanupResult, AutoCleanupError> {
+        let now_unix_secs = unix_timestamp_secs(now);
+
+        match self.dispatcher.dispatch(event, now_unix_secs) {
+            DispatchDecision::SkipDuplicate => Ok(AutoCleanupResult {
+                decision: AutoCleanupDecision::SkippedDuplicate,
+                cleanup_outcome: CleanupOutcome::default(),
+                process_outcomes: Vec::new(),
+            }),
+            DispatchDecision::DeferredToReconciliation(_) => Ok(AutoCleanupResult {
+                decision: AutoCleanupDecision::DeferredToReconciliation,
+                cleanup_outcome: CleanupOutcome::default(),
+                process_outcomes: Vec::new(),
+            }),
+            DispatchDecision::Immediate(resolved) => {
+                let result = self.execute_cleanup(event, resolved, now)?;
+
+                if result.decision == AutoCleanupDecision::ProcessedNow {
+                    self.dispatcher.mark_processed(event, now_unix_secs);
+                }
+
+                Ok(result)
+            }
+        }
+    }
+}
+
+pub fn run_reconciliation(
+    engine: &mut AutoCleanupEngine,
+    events: &[CompletionEvent],
+    now: SystemTime,
+) -> Result<Vec<AutoCleanupResult>, AutoCleanupError> {
+    let mut outcomes = Vec::with_capacity(events.len());
+
+    for event in events {
+        outcomes.push(engine.handle_completion_event(event, now)?);
+    }
+
+    Ok(outcomes)
+}
+
+pub async fn run_daemon_once_with_cleanup(
+    socket_path: &Path,
+    engine: &mut AutoCleanupEngine,
+    max_events: usize,
+    payload: &[u8],
+) -> Result<DaemonCleanupOutput, AutoCleanupError> {
+    let socket_path_buf = socket_path.to_path_buf();
+    let payload_bytes = payload.to_vec();
+    let writer = tokio::spawn(async move {
+        for _ in 0..50 {
+            match tokio::net::UnixStream::connect(&socket_path_buf).await {
+                Ok(mut stream) => {
+                    stream.write_all(&payload_bytes).await?;
+                    return Ok::<(), std::io::Error>(());
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
+            }
+        }
+
+        Err(std::io::Error::other("failed to connect to daemon socket"))
+    });
+
+    let events = receive_completion_events_once(socket_path, max_events).await?;
+    writer
+        .await
+        .map_err(|error| std::io::Error::other(error.to_string()))??;
+
+    for event in &events {
+        engine.handle_completion_event(event, SystemTime::now())?;
+    }
+
+    Ok(DaemonCleanupOutput {
+        processed_events: events.len(),
+    })
+}
+
+impl AutoCleanupEngine {
+    fn execute_cleanup(
+        &self,
+        _event: &CompletionEvent,
+        resolved: ResolvedCandidates,
+        now: SystemTime,
+    ) -> Result<AutoCleanupResult, AutoCleanupError> {
+        let process_outcomes = self.remediate_processes(&resolved)?;
+        let cleanup_outcome = remove_stale_allowlisted_artifacts(
+            &resolved.artifacts,
+            &self.settings.cleanup_policy,
+            now,
+        )?;
+
+        let decision = if !cleanup_outcome.skipped_active_session_grace.is_empty() {
+            AutoCleanupDecision::DeferredToReconciliation
+        } else {
+            AutoCleanupDecision::ProcessedNow
+        };
+
+        Ok(AutoCleanupResult {
+            decision,
+            cleanup_outcome,
+            process_outcomes,
+        })
+    }
+
+    fn remediate_processes(
+        &self,
+        resolved: &ResolvedCandidates,
+    ) -> Result<Vec<ProcessCleanupResult>, AutoCleanupError> {
+        let mut outcomes = Vec::with_capacity(resolved.processes.len());
+
+        for identity in &resolved.processes {
+            let outcome = remediate_process(&ProcessRemediationRequest {
+                identity: identity.clone(),
+                ownership_policy: self.settings.ownership_policy.clone(),
+                term_timeout: self.settings.term_timeout,
+            })?;
+            outcomes.push(ProcessCleanupResult {
+                pid: identity.pid,
+                outcome,
+            });
+        }
+
+        Ok(outcomes)
+    }
+}
+
+fn unix_timestamp_secs(now: SystemTime) -> u64 {
+    now.duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::from_secs(0))
+        .as_secs()
+}

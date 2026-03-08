@@ -1,3 +1,4 @@
+pub mod autocleanup;
 pub mod cleanup;
 pub mod cli;
 pub mod completion;
