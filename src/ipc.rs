@@ -23,6 +23,8 @@ pub enum IpcError {
     Read(String),
     #[error("parse_failed: {0}")]
     Parse(String),
+    #[error("execution_failed: {0}")]
+    Execution(String),
     #[error("unsupported_platform")]
     UnsupportedPlatform,
 }
