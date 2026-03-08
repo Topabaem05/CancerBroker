@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -186,6 +188,22 @@ pub enum CompletionParseError {
     MissingField(&'static str),
 }
 
+#[derive(Debug, Error)]
+pub enum CompletionStateIoError {
+    #[error("completion state io error at {path}: {source}")]
+    Io {
+        path: String,
+        source: std::io::Error,
+    },
+    #[error("completion state parse error at {path}: {source}")]
+    Parse {
+        path: String,
+        source: serde_json::Error,
+    },
+    #[error("completion state serialize error: {0}")]
+    Serialize(serde_json::Error),
+}
+
 #[derive(Debug, Deserialize)]
 struct RawCompletionEvent {
     #[serde(rename = "type")]
@@ -262,4 +280,47 @@ pub fn parse_completion_event(line: &str) -> Result<Option<CompletionEvent>, Com
         }
         _ => Ok(None),
     }
+}
+
+pub fn load_completion_state(
+    path: &Path,
+    dedupe_ttl_secs: u64,
+) -> Result<CompletionStateStore, CompletionStateIoError> {
+    if !path.exists() {
+        return Ok(CompletionStateStore::new(dedupe_ttl_secs));
+    }
+
+    let content = fs::read_to_string(path).map_err(|source| CompletionStateIoError::Io {
+        path: path.display().to_string(),
+        source,
+    })?;
+    let snapshot: CompletionStateSnapshot =
+        serde_json::from_str(&content).map_err(|source| CompletionStateIoError::Parse {
+            path: path.display().to_string(),
+            source,
+        })?;
+
+    Ok(CompletionStateStore::from_snapshot(
+        dedupe_ttl_secs,
+        snapshot,
+    ))
+}
+
+pub fn persist_completion_state(
+    path: &Path,
+    store: &CompletionStateStore,
+) -> Result<(), CompletionStateIoError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| CompletionStateIoError::Io {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+
+    let json = serde_json::to_string_pretty(&store.snapshot())
+        .map_err(CompletionStateIoError::Serialize)?;
+    fs::write(path, json).map_err(|source| CompletionStateIoError::Io {
+        path: path.display().to_string(),
+        source,
+    })
 }
