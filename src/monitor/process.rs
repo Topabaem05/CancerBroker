@@ -53,6 +53,10 @@ impl ProcessInventory {
         self.processes.get(&pid)
     }
 
+    pub fn samples(&self) -> impl Iterator<Item = &ProcessSample> {
+        self.processes.values()
+    }
+
     pub fn children_of(&self, parent_pid: u32) -> Vec<u32> {
         self.children_by_parent
             .get(&parent_pid)

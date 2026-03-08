@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -60,6 +62,119 @@ impl CompletionStateRecord {
             dedupe_key: event.dedupe_key(),
             processed_at_unix_secs,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CompletionRecordState {
+    Pending,
+    Processed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletionStateEntry {
+    pub dedupe_key: String,
+    pub updated_at_unix_secs: u64,
+    pub state: CompletionRecordState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CompletionStateSnapshot {
+    pub entries: Vec<CompletionStateEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompletionStoreBegin {
+    Accepted,
+    RetryPending,
+    SkipDuplicate,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CompletionStateStore {
+    dedupe_ttl_secs: u64,
+    entries: BTreeMap<String, CompletionStateEntry>,
+}
+
+impl CompletionStateStore {
+    pub fn new(dedupe_ttl_secs: u64) -> Self {
+        Self {
+            dedupe_ttl_secs,
+            entries: BTreeMap::new(),
+        }
+    }
+
+    pub fn from_snapshot(dedupe_ttl_secs: u64, snapshot: CompletionStateSnapshot) -> Self {
+        let entries = snapshot
+            .entries
+            .into_iter()
+            .map(|entry| (entry.dedupe_key.clone(), entry))
+            .collect();
+
+        Self {
+            dedupe_ttl_secs,
+            entries,
+        }
+    }
+
+    pub fn snapshot(&self) -> CompletionStateSnapshot {
+        CompletionStateSnapshot {
+            entries: self.entries.values().cloned().collect(),
+        }
+    }
+
+    pub fn begin(&mut self, event: &CompletionEvent, now_unix_secs: u64) -> CompletionStoreBegin {
+        let key = event.dedupe_key();
+
+        if let Some(entry) = self.entries.get_mut(&key) {
+            return match entry.state {
+                CompletionRecordState::Pending => {
+                    entry.updated_at_unix_secs = now_unix_secs;
+                    CompletionStoreBegin::RetryPending
+                }
+                CompletionRecordState::Processed
+                    if now_unix_secs.saturating_sub(entry.updated_at_unix_secs)
+                        <= self.dedupe_ttl_secs =>
+                {
+                    CompletionStoreBegin::SkipDuplicate
+                }
+                CompletionRecordState::Processed => {
+                    entry.updated_at_unix_secs = now_unix_secs;
+                    entry.state = CompletionRecordState::Pending;
+                    CompletionStoreBegin::Accepted
+                }
+            };
+        }
+
+        self.entries.insert(
+            key.clone(),
+            CompletionStateEntry {
+                dedupe_key: key,
+                updated_at_unix_secs: now_unix_secs,
+                state: CompletionRecordState::Pending,
+            },
+        );
+        CompletionStoreBegin::Accepted
+    }
+
+    pub fn mark_processed(&mut self, event: &CompletionEvent, now_unix_secs: u64) {
+        let key = event.dedupe_key();
+        self.entries.insert(
+            key.clone(),
+            CompletionStateEntry {
+                dedupe_key: key,
+                updated_at_unix_secs: now_unix_secs,
+                state: CompletionRecordState::Processed,
+            },
+        );
+    }
+
+    pub fn pending_keys(&self) -> Vec<String> {
+        self.entries
+            .values()
+            .filter(|entry| entry.state == CompletionRecordState::Pending)
+            .map(|entry| entry.dedupe_key.clone())
+            .collect()
     }
 }
 

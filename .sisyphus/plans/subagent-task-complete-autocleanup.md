@@ -104,14 +104,14 @@
     - `cargo test -p opencode-guardian --test completion_ingest -- --exact unsupported_event_is_ignored`
     - `cargo test -p opencode-guardian --test completion_ingest -- --exact daemon_socket_accepts_ndjson_event`
 
-- [ ] 2. Implement dispatcher + idempotency state
+- [x] 2. Implement dispatcher + idempotency state
   - Add a long-running dispatcher that queues completion events, deduplicates them, and records processed/pending state.
   - Make restart-safe behavior explicit: pending events are retried; processed events are not re-executed inside TTL.
   - Acceptance:
     - `cargo test -p opencode-guardian --test completion_dispatch -- --exact duplicate_completion_event_is_idempotent`
     - `cargo test -p opencode-guardian --test completion_dispatch -- --exact restart_retries_pending_cleanup_once`
 
-- [ ] 3. Implement candidate resolution for immediate cleanup
+- [x] 3. Implement candidate resolution for immediate cleanup
   - Resolve from completion event to cleanup targets:
     - owned subagent processes
     - allowlisted session/message/session_diff artifacts
