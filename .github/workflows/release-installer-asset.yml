@@ -72,8 +72,8 @@ jobs:
       - name: Smoke test standalone installer asset
         run: |
           TMP_DIR="$(mktemp -d)"
-          node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"
-          node ./dist/CancerBroker.cjs uninstall --config "$TMP_DIR/opencode.json"
+          OPENCODE_SESSION_MEMORY_PLUGIN_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js" node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"
+          OPENCODE_SESSION_MEMORY_PLUGIN_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js" node ./dist/CancerBroker.cjs uninstall --config "$TMP_DIR/opencode.json"
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
 
       - name: Verify release metadata consistency
