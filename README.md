@@ -1,12 +1,8 @@
 # CancerBroker
 
-Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
-
-## README by Language
-
 [Language Index](readme-pages/index.md) | [English](readme-pages/english.md) | [中文](readme-pages/chinese.md) | [Español](readme-pages/spanish.md) | [한국어](readme-pages/korean.md) | [日本語](readme-pages/japanese.md)
 
-The Korean docs also include a separate plugin guide page.
+Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 
 ## Scope
 
