@@ -1,4 +1,3 @@
-import { applyEdits, modify, parse } from "jsonc-parser/lib/esm/main.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
@@ -69,8 +68,15 @@ export function uninstallPluginFromConfig(configPath, pluginName = DEFAULT_PLUGI
 
 function writeUpdatedConfig(input) {
   const formattingOptions = detectFormattingOptions(input.originalText);
-  const edits = modify(input.originalText, input.pluginPath, input.nextValue, { formattingOptions });
-  const nextText = applyEdits(input.originalText, edits);
+  const parsed = parseJsoncObject(input.originalText, input.configPath);
+
+  if (input.nextValue === undefined) {
+    delete parsed.plugin;
+  } else {
+    parsed.plugin = input.nextValue;
+  }
+
+  const nextText = serializeJsoncObject(parsed, formattingOptions);
   parseJsoncObject(nextText, input.configPath);
 
   mkdirSync(dirname(input.configPath), { recursive: true });
@@ -94,17 +100,26 @@ function readConfigText(configPath) {
 }
 
 function parseJsoncObject(text, configPath) {
-  const errors = [];
-  const parsed = parse(text, errors, {
-    allowTrailingComma: true,
-    disallowComments: false,
-  });
+  const sanitized = sanitizeJsonc(text);
+  let parsed;
 
-  if (errors.length > 0 || !parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  try {
+    parsed = JSON.parse(sanitized);
+  } catch {
+    throw new Error(`Unable to parse OpenCode config at ${configPath}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`Unable to parse OpenCode config at ${configPath}`);
   }
 
   return parsed;
+}
+
+function serializeJsoncObject(value, formattingOptions) {
+  const indent = formattingOptions.insertSpaces ? " ".repeat(formattingOptions.tabSize) : "\t";
+  const text = JSON.stringify(value, null, indent);
+  return formattingOptions.eol === "\n" ? text : text.replace(/\n/g, formattingOptions.eol);
 }
 
 function pluginEntryMatches(entry, pluginName) {
@@ -148,6 +163,121 @@ function detectFormattingOptions(text) {
     tabSize: indent.includes("\t") ? 1 : indent.length || 2,
     eol,
   };
+}
+
+function sanitizeJsonc(text) {
+  const withoutComments = stripJsonComments(text);
+  return stripTrailingCommas(withoutComments).trim() || "{}";
+}
+
+function stripJsonComments(text) {
+  let result = "";
+  let inString = false;
+  let quote = '"';
+  let escaping = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (lineComment) {
+      if (char === "\n") {
+        lineComment = false;
+        result += char;
+      }
+      continue;
+    }
+
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (inString) {
+      result += char;
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if ((char === '"' || char === "'") && !inString) {
+      inString = true;
+      quote = char;
+      result += char;
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
+function stripTrailingCommas(text) {
+  let result = "";
+  let inString = false;
+  let quote = '"';
+  let escaping = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      result += char;
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+      result += char;
+      continue;
+    }
+
+    if (char === ",") {
+      let nextIndex = index + 1;
+      while (nextIndex < text.length && /\s/.test(text[nextIndex])) {
+        nextIndex += 1;
+      }
+
+      if (text[nextIndex] === "}" || text[nextIndex] === "]") {
+        continue;
+      }
+    }
+
+    result += char;
+  }
+
+  return result;
 }
 
 function ensureTrailingEol(text, eol) {

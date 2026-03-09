@@ -56,9 +56,14 @@ Working directory: `packaging/npm/opencode-session-memory-sidebar-installer`
 
 #### `node ./bin/install.mjs` / `node ./bin/uninstall.mjs` smoke path
 
-- Result: fail in this environment
-- Detail: Node `v25.8.0` fails to resolve `jsonc-parser/lib/esm/impl/format` from `jsonc-parser/lib/esm/main.js`
-- Observed error: `ERR_MODULE_NOT_FOUND`
+- Result: pass
+- Verified with temp config via `OPENCODE_CONFIG_DIR`
+
+#### JSONC input smoke path
+
+- Result: pass
+- Verified install/uninstall against a config containing `//` comments and a trailing comma
+- Final plugin list returned to `existing-plugin` after uninstall
 
 #### `bun run build:standalone`
 
@@ -76,11 +81,10 @@ Working directory: `packaging/npm/opencode-session-memory-sidebar-installer`
 - Repository lint/test status is healthy for Rust.
 - Plugin package typecheck and smoke import are healthy.
 - Plugin package does not currently contain automated Bun test files.
-- Installer runtime is currently validated via the standalone bundled artifact.
-- The direct installer source scripts should be treated as environment-sensitive under Node `v25.8.0` until the `jsonc-parser` ESM import issue is addressed.
+- Installer runtime is validated both through direct Node scripts and the standalone bundled artifact.
 
 ## Overall Assessment
 
 - Core Rust checks: pass
 - Plugin package checks: pass, with no test files present
-- Installer verification: standalone flow passes; direct source-script Node flow fails on current Node runtime
+- Installer verification: direct source-script flow and standalone flow both pass
