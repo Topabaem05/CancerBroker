@@ -5,20 +5,43 @@ import {
   resolveTargetConfigPath,
   uninstallPluginFromConfig,
 } from "./config-file.mjs";
+import { uninstallLocalPlugin } from "./plugin-file.mjs";
 
 export default async function runUninstall(argv = process.argv.slice(2)) {
   const flags = parseFlags(argv);
   const configPath = resolveTargetConfigPath(flags);
-  const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
-  const result = uninstallPluginFromConfig(configPath, pluginName);
+  if (flags.packageName) {
+    const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
+    const result = uninstallPluginFromConfig(configPath, pluginName);
 
-  if (result.changed) {
-    console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result.configPath}`);
-    if (result.backupPath) {
-      console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
+    if (result.changed) {
+      console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result.configPath}`);
+      if (result.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
+      }
+    } else {
+      console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result.configPath}`);
+    }
+    console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
+    return;
+  }
+
+  const fileResult = uninstallLocalPlugin(flags);
+  if (fileResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed local plugin at ${fileResult.pluginFilePath}`);
+    if (fileResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult.backupPath}`);
     }
   } else {
-    console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result.configPath}`);
+    console.log(`[opencode-session-memory-sidebar] Local plugin not present at ${fileResult.pluginFilePath}`);
+  }
+
+  const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+  if (cleanupResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult.configPath}`);
+    if (cleanupResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${cleanupResult.backupPath}`);
+    }
   }
 
   console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");

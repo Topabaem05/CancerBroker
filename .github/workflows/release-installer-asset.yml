@@ -50,9 +50,24 @@ jobs:
         run: bun install
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
 
+      - name: Install plugin package dependencies
+        run: bun install
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
+      - name: Build plugin asset
+        run: bun run build:standalone
+        working-directory: packaging/npm/opencode-session-memory-sidebar
+
       - name: Build standalone installer asset
         run: bun run build:standalone
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
+
+      - name: Smoke test plugin asset
+        run: |
+          TMP_DIR="$(mktemp -d)"
+          cp ./dist/CancerBroker.plugin.js "$TMP_DIR/CancerBroker.plugin.js"
+          bun -e "import('file://$TMP_DIR/CancerBroker.plugin.js').then((mod) => { if (typeof mod.default !== 'function') throw new Error('plugin default export missing') })"
+        working-directory: packaging/npm/opencode-session-memory-sidebar
 
       - name: Smoke test standalone installer asset
         run: |
@@ -69,8 +84,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "${{ steps.release_tag.outputs.tag }}" >/dev/null 2>&1 \
-            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --clobber \
-            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
+            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber \
+            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
 
       - name: Verify published release asset
         run: node ./scripts/verify-installer-release.mjs --tag "${{ steps.release_tag.outputs.tag }}" --check-remote

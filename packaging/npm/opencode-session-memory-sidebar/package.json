@@ -5,10 +5,12 @@
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "build:standalone": "bunx esbuild ./src/index.ts --bundle --platform=node --format=esm --outfile=./dist/CancerBroker.plugin.js"
   },
   "files": [
     "src",
+    "dist",
     "README.md"
   ],
   "devDependencies": {

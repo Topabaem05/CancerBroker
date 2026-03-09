@@ -18,6 +18,10 @@ const standaloneAssetPath = resolve(
   repoRoot,
   "packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs",
 );
+const pluginAssetPath = resolve(
+  repoRoot,
+  "packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js",
+);
 const docsPaths = [
   resolve(repoRoot, "packaging/npm/opencode-session-memory-sidebar-installer/README.md"),
   resolve(repoRoot, "packaging/npm/README.md"),
@@ -34,8 +38,10 @@ if (typeof version !== "string" || version.length === 0) {
 
 const expectedTag = readFlagValue(args, "--tag") ?? `CancerBroker-v${version}`;
 const expectedUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${expectedTag}/CancerBroker.cjs`;
+const expectedPluginUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${expectedTag}/CancerBroker.plugin.js`;
 
 assertFileExists(standaloneAssetPath, "Standalone asset");
+assertFileExists(pluginAssetPath, "Plugin asset");
 
 const digest = hashFile(standaloneAssetPath);
 const formulaText = readFileSync(formulaPath, "utf8");
@@ -52,6 +58,7 @@ const workflowText = readFileSync(workflowPath, "utf8");
 assertIncludes(workflowText, '- "CancerBroker-v*"', `${workflowPath} tag trigger`);
 assertIncludes(workflowText, 'node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"', `${workflowPath} smoke test install`);
 assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --clobber', `${workflowPath} upload command`);
+assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber', `${workflowPath} plugin upload command`);
 
 const installScriptText = readFileSync(installScriptPath, "utf8");
 assertIncludes(
@@ -61,10 +68,8 @@ assertIncludes(
 );
 
 if (args.includes("--check-remote")) {
-  const response = await fetch(expectedUrl, { method: "HEAD", redirect: "follow" });
-  if (!response.ok) {
-    throw new Error(`Remote release asset check failed for ${expectedUrl}: HTTP ${response.status}`);
-  }
+  await assertRemoteOk(expectedUrl);
+  await assertRemoteOk(expectedPluginUrl);
 }
 
 process.stdout.write(
@@ -72,6 +77,7 @@ process.stdout.write(
     `Installer release verification passed for ${expectedTag}.`,
     `Version: ${version}`,
     `Asset URL: ${expectedUrl}`,
+    `Plugin URL: ${expectedPluginUrl}`,
     `SHA256: ${digest}`,
   ].join("\n") + "\n",
 );
@@ -110,5 +116,12 @@ function hashFile(filePath) {
 function assertIncludes(content, expectedValue, label) {
   if (!content.includes(expectedValue)) {
     throw new Error(`Expected ${label} to include: ${expectedValue}`);
+  }
+}
+
+async function assertRemoteOk(url) {
+  const response = await fetch(url, { method: "HEAD", redirect: "follow" });
+  if (!response.ok) {
+    throw new Error(`Remote release asset check failed for ${url}: HTTP ${response.status}`);
   }
 }

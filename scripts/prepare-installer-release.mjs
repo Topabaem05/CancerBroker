@@ -55,7 +55,7 @@ process.stdout.write(
     `Asset URL: ${releaseAssetUrl}`,
     `SHA256: ${sha256}`,
     "Next steps:",
-    `  git add packaging/npm/opencode-session-memory-sidebar-installer/package.json packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs Formula/opencode-session-memory-sidebar-installer.rb packaging/npm/opencode-session-memory-sidebar-installer/README.md packaging/npm/README.md readme-pages/korean-plugin-guide.md`,
+    `  git add packaging/npm/opencode-session-memory-sidebar/package.json packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js packaging/npm/opencode-session-memory-sidebar-installer/package.json packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs Formula/opencode-session-memory-sidebar-installer.rb packaging/npm/opencode-session-memory-sidebar-installer/README.md packaging/npm/README.md readme-pages/korean-plugin-guide.md`,
     `  git commit -m \"Prepare installer release v${version}\"`,
     "  git push origin main",
     `  git tag ${installerTag}`,
@@ -94,6 +94,12 @@ function installInstallerDependencies(repoRootValue) {
 }
 
 function buildStandaloneInstaller(repoRootValue) {
+  runCommand(
+    "bun",
+    ["run", "build:standalone"],
+    resolve(repoRootValue, "packaging/npm/opencode-session-memory-sidebar"),
+  );
+
   runCommand(
     "bun",
     ["run", "build:standalone"],

@@ -15,46 +15,46 @@ function resolveTargetConfigPath(options = {}) {
   const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path.join)((0, import_node_os.homedir)(), ".config", "opencode");
   return (0, import_node_path.join)(configDir, "opencode.json");
 }
-function installPluginIntoConfig(configPath2, pluginName2 = DEFAULT_PLUGIN_PACKAGE_NAME) {
-  const originalText = readConfigText(configPath2);
-  const parsed = parseJsoncObject(originalText, configPath2);
+function installPluginIntoConfig(configPath, pluginName = DEFAULT_PLUGIN_PACKAGE_NAME) {
+  const originalText = readConfigText(configPath);
+  const parsed = parseJsoncObject(originalText, configPath);
   const existingEntries = Array.isArray(parsed.plugin) ? parsed.plugin : [];
-  if (existingEntries.some((entry) => pluginEntryMatches(entry, pluginName2))) {
+  if (existingEntries.some((entry) => pluginEntryMatches(entry, pluginName))) {
     return {
       changed: false,
-      configPath: configPath2,
+      configPath,
       backupPath: null,
-      pluginName: pluginName2
+      pluginName
     };
   }
-  const nextEntries = [...existingEntries, pluginName2];
+  const nextEntries = [...existingEntries, pluginName];
   return writeUpdatedConfig({
-    configPath: configPath2,
+    configPath,
     originalText,
     pluginPath: ["plugin"],
     nextValue: nextEntries,
-    pluginName: pluginName2
+    pluginName
   });
 }
-function uninstallPluginFromConfig(configPath2, pluginName2 = DEFAULT_PLUGIN_PACKAGE_NAME) {
-  const originalText = readConfigText(configPath2);
-  const parsed = parseJsoncObject(originalText, configPath2);
+function uninstallPluginFromConfig(configPath, pluginName = DEFAULT_PLUGIN_PACKAGE_NAME) {
+  const originalText = readConfigText(configPath);
+  const parsed = parseJsoncObject(originalText, configPath);
   const existingEntries = Array.isArray(parsed.plugin) ? parsed.plugin : [];
-  const nextEntries = existingEntries.filter((entry) => !pluginEntryMatches(entry, pluginName2));
+  const nextEntries = existingEntries.filter((entry) => !pluginEntryMatches(entry, pluginName));
   if (nextEntries.length === existingEntries.length) {
     return {
       changed: false,
-      configPath: configPath2,
+      configPath,
       backupPath: null,
-      pluginName: pluginName2
+      pluginName
     };
   }
   return writeUpdatedConfig({
-    configPath: configPath2,
+    configPath,
     originalText,
     pluginPath: ["plugin"],
     nextValue: nextEntries.length > 0 ? nextEntries : void 0,
-    pluginName: pluginName2
+    pluginName
   });
 }
 function writeUpdatedConfig(input) {
@@ -77,22 +77,22 @@ function writeUpdatedConfig(input) {
     pluginName: input.pluginName
   };
 }
-function readConfigText(configPath2) {
-  if (!(0, import_node_fs.existsSync)(configPath2)) {
+function readConfigText(configPath) {
+  if (!(0, import_node_fs.existsSync)(configPath)) {
     return "{}\n";
   }
-  return (0, import_node_fs.readFileSync)(configPath2, "utf8");
+  return (0, import_node_fs.readFileSync)(configPath, "utf8");
 }
-function parseJsoncObject(text, configPath2) {
+function parseJsoncObject(text, configPath) {
   const sanitized = sanitizeJsonc(text);
   let parsed;
   try {
     parsed = JSON.parse(sanitized);
   } catch {
-    throw new Error(`Unable to parse OpenCode config at ${configPath2}`);
+    throw new Error(`Unable to parse OpenCode config at ${configPath}`);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Unable to parse OpenCode config at ${configPath2}`);
+    throw new Error(`Unable to parse OpenCode config at ${configPath}`);
   }
   return parsed;
 }
@@ -101,18 +101,18 @@ function serializeJsoncObject(value, formattingOptions) {
   const text = JSON.stringify(value, null, indent);
   return formattingOptions.eol === "\n" ? text : text.replace(/\n/g, formattingOptions.eol);
 }
-function pluginEntryMatches(entry, pluginName2) {
+function pluginEntryMatches(entry, pluginName) {
   if (typeof entry === "string") {
-    return normalizePluginSpecifier(entry) === pluginName2;
+    return normalizePluginSpecifier(entry) === pluginName;
   }
   if (!entry || typeof entry !== "object") {
     return false;
   }
   if (typeof entry.plugin === "string") {
-    return normalizePluginSpecifier(entry.plugin) === pluginName2;
+    return normalizePluginSpecifier(entry.plugin) === pluginName;
   }
   if (typeof entry.name === "string") {
-    return normalizePluginSpecifier(entry.name) === pluginName2;
+    return normalizePluginSpecifier(entry.name) === pluginName;
   }
   return false;
 }
@@ -140,7 +140,7 @@ function sanitizeJsonc(text) {
   return stripTrailingCommas(withoutComments).trim() || "{}";
 }
 function stripJsonComments(text) {
-  let result2 = "";
+  let result = "";
   let inString = false;
   let quote = '"';
   let escaping = false;
@@ -152,7 +152,7 @@ function stripJsonComments(text) {
     if (lineComment) {
       if (char === "\n") {
         lineComment = false;
-        result2 += char;
+        result += char;
       }
       continue;
     }
@@ -164,7 +164,7 @@ function stripJsonComments(text) {
       continue;
     }
     if (inString) {
-      result2 += char;
+      result += char;
       if (escaping) {
         escaping = false;
       } else if (char === "\\") {
@@ -177,7 +177,7 @@ function stripJsonComments(text) {
     if ((char === '"' || char === "'") && !inString) {
       inString = true;
       quote = char;
-      result2 += char;
+      result += char;
       continue;
     }
     if (char === "/" && next === "/") {
@@ -190,19 +190,19 @@ function stripJsonComments(text) {
       index += 1;
       continue;
     }
-    result2 += char;
+    result += char;
   }
-  return result2;
+  return result;
 }
 function stripTrailingCommas(text) {
-  let result2 = "";
+  let result = "";
   let inString = false;
   let quote = '"';
   let escaping = false;
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
     if (inString) {
-      result2 += char;
+      result += char;
       if (escaping) {
         escaping = false;
       } else if (char === "\\") {
@@ -215,7 +215,7 @@ function stripTrailingCommas(text) {
     if (char === '"' || char === "'") {
       inString = true;
       quote = char;
-      result2 += char;
+      result += char;
       continue;
     }
     if (char === ",") {
@@ -227,57 +227,183 @@ function stripTrailingCommas(text) {
         continue;
       }
     }
-    result2 += char;
+    result += char;
   }
-  return result2;
+  return result;
 }
 function ensureTrailingEol(text, eol) {
   return text.endsWith(eol) ? text : `${text}${eol}`;
 }
-function createBackup(configPath2, originalText) {
-  const backupPath = `${configPath2}.bak.${Date.now()}`;
+function createBackup(configPath, originalText) {
+  const backupPath = `${configPath}.bak.${Date.now()}`;
   (0, import_node_fs.writeFileSync)(backupPath, originalText, "utf8");
   return backupPath;
 }
-function atomicWrite(configPath2, text) {
-  const tempPath = `${configPath2}.tmp.${process.pid}.${Date.now()}`;
+function atomicWrite(configPath, text) {
+  const tempPath = `${configPath}.tmp.${process.pid}.${Date.now()}`;
   (0, import_node_fs.writeFileSync)(tempPath, text, "utf8");
-  (0, import_node_fs.renameSync)(tempPath, configPath2);
+  (0, import_node_fs.renameSync)(tempPath, configPath);
+}
+
+// bin/plugin-file.mjs
+var import_node_fs2 = require("node:fs");
+var import_node_path2 = require("node:path");
+var import_node_os2 = require("node:os");
+var DEFAULT_PLUGIN_ASSET_NAME = "CancerBroker.plugin.js";
+var DEFAULT_PLUGIN_URL = process.env.OPENCODE_SESSION_MEMORY_PLUGIN_URL || `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_PLUGIN_ASSET_NAME}`;
+function resolvePluginDirectory(options = {}) {
+  if (options.project) {
+    return (0, import_node_path2.join)(process.cwd(), ".opencode", "plugins");
+  }
+  const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".config", "opencode");
+  return (0, import_node_path2.join)(configDir, "plugins");
+}
+function resolvePluginFilePath(options = {}) {
+  return (0, import_node_path2.join)(resolvePluginDirectory(options), DEFAULT_PLUGIN_ASSET_NAME);
+}
+async function installLocalPlugin(options = {}) {
+  const pluginUrl = options.pluginUrl || DEFAULT_PLUGIN_URL;
+  const pluginFilePath = resolvePluginFilePath(options);
+  const nextText = await downloadPluginAsset(pluginUrl);
+  (0, import_node_fs2.mkdirSync)(resolvePluginDirectory(options), { recursive: true });
+  const currentText = (0, import_node_fs2.existsSync)(pluginFilePath) ? (0, import_node_fs2.readFileSync)(pluginFilePath, "utf8") : null;
+  if (currentText === nextText) {
+    return {
+      changed: false,
+      pluginFilePath,
+      pluginUrl,
+      backupPath: null
+    };
+  }
+  const backupPath = currentText === null ? null : backupExistingFile(pluginFilePath, currentText);
+  (0, import_node_fs2.writeFileSync)(pluginFilePath, ensureTrailingEol2(nextText), "utf8");
+  return {
+    changed: true,
+    pluginFilePath,
+    pluginUrl,
+    backupPath
+  };
+}
+function uninstallLocalPlugin(options = {}) {
+  const pluginFilePath = resolvePluginFilePath(options);
+  if (!(0, import_node_fs2.existsSync)(pluginFilePath)) {
+    return {
+      changed: false,
+      pluginFilePath,
+      backupPath: null
+    };
+  }
+  const originalText = (0, import_node_fs2.readFileSync)(pluginFilePath, "utf8");
+  const backupPath = backupExistingFile(pluginFilePath, originalText);
+  return {
+    changed: true,
+    pluginFilePath,
+    backupPath
+  };
+}
+async function downloadPluginAsset(pluginUrl) {
+  if (pluginUrl.startsWith("file://")) {
+    return (0, import_node_fs2.readFileSync)(new URL(pluginUrl), "utf8");
+  }
+  if (pluginUrl.startsWith("/") && (0, import_node_fs2.existsSync)(pluginUrl)) {
+    return (0, import_node_fs2.readFileSync)(pluginUrl, "utf8");
+  }
+  const response = await fetch(pluginUrl);
+  if (!response.ok) {
+    throw new Error(`Unable to download plugin asset from ${pluginUrl}: HTTP ${response.status}`);
+  }
+  return await response.text();
+}
+function backupExistingFile(filePath, originalText) {
+  const backupPath = `${filePath}.bak.${Date.now()}`;
+  (0, import_node_fs2.writeFileSync)(backupPath, originalText, "utf8");
+  return backupPath;
+}
+function ensureTrailingEol2(text) {
+  return text.endsWith("\n") ? text : `${text}
+`;
 }
 
 // bin/standalone.mjs
 var args = process.argv.slice(2);
-var command = args[0] === "uninstall" ? "uninstall" : "install";
-var parsedArgs = command === "uninstall" ? args.slice(1) : args;
-var flags = parseFlags(parsedArgs);
-var configPath = resolveTargetConfigPath(flags);
-var pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
-if (command === "uninstall") {
-  const result2 = uninstallPluginFromConfig(configPath, pluginName);
-  if (result2.changed) {
-    console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result2.configPath}`);
-    if (result2.backupPath) {
-      console.log(`[opencode-session-memory-sidebar] Backup: ${result2.backupPath}`);
+main(args).catch((error) => {
+  throw error;
+});
+async function main(argv) {
+  const command = argv[0] === "uninstall" ? "uninstall" : "install";
+  const parsedArgs = command === "uninstall" ? argv.slice(1) : argv;
+  const flags = parseFlags(parsedArgs);
+  const configPath = resolveTargetConfigPath(flags);
+  if (command === "uninstall") {
+    if (flags.packageName) {
+      const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
+      const result = uninstallPluginFromConfig(configPath, pluginName);
+      if (result.changed) {
+        console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result.configPath}`);
+        if (result.backupPath) {
+          console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
+        }
+      } else {
+        console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result.configPath}`);
+      }
+      console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
+      return;
+    }
+    const fileResult2 = uninstallLocalPlugin(flags);
+    if (fileResult2.changed) {
+      console.log(`[opencode-session-memory-sidebar] Removed local plugin at ${fileResult2.pluginFilePath}`);
+      if (fileResult2.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult2.backupPath}`);
+      }
+    } else {
+      console.log(`[opencode-session-memory-sidebar] Local plugin not present at ${fileResult2.pluginFilePath}`);
+    }
+    const cleanupResult2 = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+    if (cleanupResult2.changed) {
+      console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult2.configPath}`);
+      if (cleanupResult2.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${cleanupResult2.backupPath}`);
+      }
+    }
+    console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
+    return;
+  }
+  if (flags.packageName) {
+    const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
+    const result = installPluginIntoConfig(configPath, pluginName);
+    if (result.changed) {
+      console.log(`[opencode-session-memory-sidebar] Added plugin to ${result.configPath}`);
+      if (result.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
+      }
+    } else {
+      console.log(`[opencode-session-memory-sidebar] Plugin already present in ${result.configPath}`);
+    }
+    console.log(`[opencode-session-memory-sidebar] Plugin package: ${result.pluginName}`);
+    console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
+    return;
+  }
+  const fileResult = await installLocalPlugin(flags);
+  if (fileResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Installed local plugin at ${fileResult.pluginFilePath}`);
+    if (fileResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult.backupPath}`);
     }
   } else {
-    console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result2.configPath}`);
+    console.log(`[opencode-session-memory-sidebar] Local plugin already up to date at ${fileResult.pluginFilePath}`);
   }
+  const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+  if (cleanupResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult.configPath}`);
+    if (cleanupResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${cleanupResult.backupPath}`);
+    }
+  }
+  console.log(`[opencode-session-memory-sidebar] Plugin asset: ${fileResult.pluginUrl}`);
   console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
-  process.exit(0);
 }
-var result = installPluginIntoConfig(configPath, pluginName);
-if (result.changed) {
-  console.log(`[opencode-session-memory-sidebar] Added plugin to ${result.configPath}`);
-  if (result.backupPath) {
-    console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
-  }
-} else {
-  console.log(`[opencode-session-memory-sidebar] Plugin already present in ${result.configPath}`);
-}
-console.log(`[opencode-session-memory-sidebar] Plugin package: ${result.pluginName}`);
-console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
 function parseFlags(argv) {
-  const flags2 = {
+  const flags = {
     project: false,
     configPath: void 0,
     packageName: void 0
@@ -285,18 +411,18 @@ function parseFlags(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--project") {
-      flags2.project = true;
+      flags.project = true;
       continue;
     }
     if (value === "--config" && typeof argv[index + 1] === "string") {
-      flags2.configPath = argv[index + 1];
+      flags.configPath = argv[index + 1];
       index += 1;
       continue;
     }
     if (value === "--package" && typeof argv[index + 1] === "string") {
-      flags2.packageName = argv[index + 1];
+      flags.packageName = argv[index + 1];
       index += 1;
     }
   }
-  return flags2;
+  return flags;
 }
