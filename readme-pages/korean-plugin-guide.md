@@ -18,6 +18,10 @@ opencode --restart
 ```
 
 - 이 bootstrap script는 GitHub Releases의 최신 installer asset을 내려받습니다.
+- 설치가 끝나면 OpenCode가 자동 로드할 수 있도록 local plugin 파일을 생성합니다.
+- 기본 설치 위치:
+  - 글로벌: `~/.config/opencode/plugins/CancerBroker.plugin.js`
+  - 프로젝트: `.opencode/plugins/CancerBroker.plugin.js`
 
 - 요구 사항:
   - `node` 또는 `bun`이 설치되어 있어야 합니다.
@@ -63,7 +67,13 @@ brew uninstall opencode-session-memory-sidebar-installer
 - 현재 버전 고정 release asset URL:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.1/CancerBroker.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.2/CancerBroker.cjs
+```
+
+- npm package 방식으로 강제 등록하고 싶다면 `--package`를 명시합니다:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package opencode-session-memory-sidebar
 ```
 
 - npm publish 이후 지원할 예정인 패키지 실행 방식:
@@ -80,9 +90,9 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 ```
 
 - 위 명령이 하는 일:
-  - 전역 OpenCode 설정 파일 `~/.config/opencode/opencode.json`에 npm 플러그인 `opencode-session-memory-sidebar`를 자동으로 추가합니다.
-  - OpenCode는 다음 시작 시 해당 npm 플러그인을 자동 설치/캐시합니다.
-  - 이미 추가되어 있으면 중복 추가하지 않습니다.
+  - 기본적으로 OpenCode plugin 디렉터리에 `CancerBroker.plugin.js`를 설치합니다.
+  - OpenCode는 다음 시작 시 local plugin 파일을 자동 로드합니다.
+  - 예전에 남아 있던 기본 npm plugin entry가 있으면 `opencode.json`에서 자동 제거합니다.
 
 - 프로젝트 로컬로만 추가하고 싶을 때:
 
@@ -106,7 +116,7 @@ session-memory-plugin add
 session-memory-plugin remove
 ```
 
-- `remove`는 파일 삭제가 아니라 `opencode.json`에서 플러그인 등록만 해제합니다.
+- `remove`는 기본 local install 경로에서는 실제 plugin 파일을 제거하고, 남아 있던 기본 npm plugin entry가 있으면 `opencode.json`에서도 같이 정리합니다.
 - OpenCode도 같이 재시작하고 싶으면 `--restart`를 붙일 수 있습니다.
 
 - 제거:
@@ -122,9 +132,9 @@ opencode --restart
   - npm publish workflow: `.github/workflows/npm-publish.yml`
 
 - 배포 원칙:
-  - 실제 플러그인 패키지 `opencode-session-memory-sidebar`를 먼저 publish 합니다.
-  - 그 다음 installer 패키지 `opencode-session-memory-sidebar-installer`를 publish 합니다.
-  - 둘은 버전을 독립적으로 올릴 수 있지만, installer 기본 대상 패키지명은 실제 publish 이름과 항상 맞춰야 합니다.
+  - 현재 기본 배포 경로는 release asset 기반 local plugin 설치입니다.
+  - 필요하면 이후에 `opencode-session-memory-sidebar` npm publish도 지원할 수 있습니다.
+  - installer 패키지 버전과 release asset 태그는 계속 관리합니다.
   - Homebrew 경로도 public 저장소 기준으로 사용할 수 있습니다.
   - release asset은 `.github/workflows/release-installer-asset.yml`과 installer tag로 관리합니다.
 

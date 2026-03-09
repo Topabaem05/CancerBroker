@@ -4,8 +4,8 @@
 
 - `opencode-session-memory-sidebar`
   - Actual OpenCode plugin package.
-  - Published to npm.
-  - OpenCode installs and caches it from the `plugin` array in `opencode.json`.
+  - Bundled into a local plugin asset for clone-free installs.
+  - Can still be published to npm later for `plugin` array based installs.
 
 - `opencode-session-memory-sidebar-installer`
   - Small CLI package for clone-free installation.
@@ -15,7 +15,7 @@
     curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
     ```
 
-    The bootstrap script downloads the latest installer asset from GitHub Releases.
+    The bootstrap script downloads the latest installer asset from GitHub Releases and installs `CancerBroker.plugin.js` into the OpenCode plugin directory.
 
   - Authenticated fallback if raw fetches fail:
 
@@ -36,11 +36,11 @@
     npx --yes opencode-session-memory-sidebar-installer
     ```
 
-  - Edits `opencode.json` safely and idempotently.
+  - Installs a local plugin file by default and edits `opencode.json` only when needed for explicit npm-package mode.
 
 ## Install Channels
 
-1. Current public curl path: bootstrap script downloads the installer without cloning the repo.
+1. Current public curl path: bootstrap script downloads the installer without cloning the repo and installs `CancerBroker.plugin.js` locally.
 2. Authenticated fallback path: `gh api` can bootstrap the same script if raw fetches fail.
 3. Future npm path: `bunx` / `npx` once both packages are published.
 4. Homebrew path: public tap formula from this repository.
@@ -59,19 +59,18 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 Current versioned release asset URL:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.1/CancerBroker.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.2/CancerBroker.cjs
 ```
 
 ## Publish Order
 
-1. Publish `opencode-session-memory-sidebar`
-2. Publish `opencode-session-memory-sidebar-installer`
-3. User runs installer with public curl bootstrap, authenticated fallback, or future package exec
-4. Installer appends `opencode-session-memory-sidebar` to `plugin` in `opencode.json`
-5. User runs `opencode --restart`
-6. OpenCode downloads and loads the plugin automatically
+1. Publish release assets for `CancerBroker.plugin.js` and `CancerBroker.cjs`
+2. User runs installer with public curl bootstrap, authenticated fallback, Homebrew, or future package exec
+3. Installer writes `CancerBroker.plugin.js` into `~/.config/opencode/plugins/` or `.opencode/plugins/`
+4. User runs `opencode --restart`
+5. OpenCode loads the local plugin file automatically on startup
 
-If you publish under a scope, the installer can target it with:
+If you publish under a scope, the installer can still target npm explicitly with:
 
 ```bash
 bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
@@ -141,3 +140,4 @@ That command updates the installer package version, rebuilds the standalone asse
 - Homebrew formula is available from the public repository tap.
 - Release assets are published by `.github/workflows/release-installer-asset.yml`.
 - Release prep is automated by `scripts/prepare-installer-release.mjs`.
+- Default installation no longer depends on npm publication of the plugin package.

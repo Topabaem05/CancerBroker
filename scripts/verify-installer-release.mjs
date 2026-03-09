@@ -57,8 +57,8 @@ for (const docPath of docsPaths) {
 const workflowText = readFileSync(workflowPath, "utf8");
 assertIncludes(workflowText, '- "CancerBroker-v*"', `${workflowPath} tag trigger`);
 assertIncludes(workflowText, 'node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"', `${workflowPath} smoke test install`);
-assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --clobber', `${workflowPath} upload command`);
-assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber', `${workflowPath} plugin upload command`);
+assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber', `${workflowPath} upload command`);
+assertIncludes(workflowText, 'packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js', `${workflowPath} plugin asset path`);
 
 const installScriptText = readFileSync(installScriptPath, "utf8");
 assertIncludes(

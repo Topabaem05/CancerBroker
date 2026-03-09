@@ -1,9 +1,9 @@
 class OpencodeSessionMemorySidebarInstaller < Formula
   desc "Installer for the OpenCode Session Memory sidebar plugin"
   homepage "https://github.com/Topabaem05/CancerBroker"
-  url "https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.1/CancerBroker.cjs"
-  version "0.1.1"
-  sha256 "e2bd37ab27e6c794146146fbbd607f5d6fa9ab01f29ee26013427e69dcb93e17"
+  url "https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.2/CancerBroker.cjs"
+  version "0.1.2"
+  sha256 "f9078d788be55dc94d128fd2b0be9dfc4bf5b7184e39b59591b2e338e7b15c8c"
   license "MIT"
 
   depends_on "node"

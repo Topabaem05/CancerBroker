@@ -1,6 +1,6 @@
 {
   "name": "opencode-session-memory-sidebar-installer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "bin": {
     "opencode-session-memory-sidebar-installer": "./bin/install.mjs"
   },
