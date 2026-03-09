@@ -20,7 +20,7 @@ const standaloneAssetPath = resolve(
 );
 const pluginAssetPath = resolve(
   repoRoot,
-  "packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js",
+  "packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js",
 );
 const docsPaths = [
   resolve(repoRoot, "packaging/npm/opencode-session-memory-sidebar-installer/README.md"),
@@ -38,10 +38,10 @@ if (typeof version !== "string" || version.length === 0) {
 
 const expectedTag = readFlagValue(args, "--tag") ?? `CancerBroker-v${version}`;
 const expectedUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${expectedTag}/CancerBroker.cjs`;
-const expectedPluginUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${expectedTag}/CancerBroker.plugin.js`;
+const expectedToolUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${expectedTag}/session_memory.js`;
 
 assertFileExists(standaloneAssetPath, "Standalone asset");
-assertFileExists(pluginAssetPath, "Plugin asset");
+assertFileExists(pluginAssetPath, "Tool asset");
 
 const digest = hashFile(standaloneAssetPath);
 const formulaText = readFileSync(formulaPath, "utf8");
@@ -57,8 +57,8 @@ for (const docPath of docsPaths) {
 const workflowText = readFileSync(workflowPath, "utf8");
 assertIncludes(workflowText, '- "CancerBroker-v*"', `${workflowPath} tag trigger`);
 assertIncludes(workflowText, 'node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"', `${workflowPath} smoke test install`);
-assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber', `${workflowPath} upload command`);
-assertIncludes(workflowText, 'packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js', `${workflowPath} plugin asset path`);
+assertIncludes(workflowText, 'gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js --clobber', `${workflowPath} upload command`);
+assertIncludes(workflowText, 'packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js', `${workflowPath} tool asset path`);
 
 const installScriptText = readFileSync(installScriptPath, "utf8");
 assertIncludes(
@@ -69,7 +69,7 @@ assertIncludes(
 
 if (args.includes("--check-remote")) {
   await assertRemoteOk(expectedUrl);
-  await assertRemoteOk(expectedPluginUrl);
+  await assertRemoteOk(expectedToolUrl);
 }
 
 process.stdout.write(
@@ -77,7 +77,7 @@ process.stdout.write(
     `Installer release verification passed for ${expectedTag}.`,
     `Version: ${version}`,
     `Asset URL: ${expectedUrl}`,
-    `Plugin URL: ${expectedPluginUrl}`,
+    `Tool URL: ${expectedToolUrl}`,
     `SHA256: ${digest}`,
   ].join("\n") + "\n",
 );

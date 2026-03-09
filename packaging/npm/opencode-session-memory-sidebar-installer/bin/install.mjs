@@ -6,7 +6,8 @@ import {
   resolveTargetConfigPath,
   uninstallPluginFromConfig,
 } from "./config-file.mjs";
-import { installLocalPlugin } from "./plugin-file.mjs";
+import { uninstallLocalPlugin } from "./plugin-file.mjs";
+import { installLocalTool } from "./tool-file.mjs";
 
 const args = process.argv.slice(2);
 const command = args[0] === "uninstall" ? "uninstall" : "install";
@@ -37,14 +38,22 @@ if (flags.packageName) {
   process.exit(0);
 }
 
-const fileResult = await installLocalPlugin(flags);
-if (fileResult.changed) {
-  console.log(`[opencode-session-memory-sidebar] Installed local plugin at ${fileResult.pluginFilePath}`);
-  if (fileResult.backupPath) {
-    console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult.backupPath}`);
+const toolResult = await installLocalTool(flags);
+if (toolResult.changed) {
+  console.log(`[opencode-session-memory-sidebar] Installed local tool at ${toolResult.toolFilePath}`);
+  if (toolResult.backupPath) {
+    console.log(`[opencode-session-memory-sidebar] Backup: ${toolResult.backupPath}`);
   }
 } else {
-  console.log(`[opencode-session-memory-sidebar] Local plugin already up to date at ${fileResult.pluginFilePath}`);
+  console.log(`[opencode-session-memory-sidebar] Local tool already up to date at ${toolResult.toolFilePath}`);
+}
+
+const pluginCleanup = uninstallLocalPlugin(flags);
+if (pluginCleanup.changed) {
+  console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${pluginCleanup.pluginFilePath}`);
+  if (pluginCleanup.backupPath) {
+    console.log(`[opencode-session-memory-sidebar] Backup: ${pluginCleanup.backupPath}`);
+  }
 }
 
 const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
@@ -55,7 +64,7 @@ if (cleanupResult.changed) {
   }
 }
 
-console.log(`[opencode-session-memory-sidebar] Plugin asset: ${fileResult.pluginUrl}`);
+console.log(`[opencode-session-memory-sidebar] Tool asset: ${toolResult.toolUrl}`);
 console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
 
 function parseFlags(argv) {

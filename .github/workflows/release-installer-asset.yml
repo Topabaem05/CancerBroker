@@ -65,15 +65,15 @@ jobs:
       - name: Smoke test plugin asset
         run: |
           TMP_DIR="$(mktemp -d)"
-          cp ./dist/CancerBroker.plugin.js "$TMP_DIR/CancerBroker.plugin.js"
-          bun -e "import('file://$TMP_DIR/CancerBroker.plugin.js').then((mod) => { if (typeof mod.default !== 'function') throw new Error('plugin default export missing') })"
+          cp ./dist/session_memory.js "$TMP_DIR/session_memory.js"
+          bun -e "import('file://$TMP_DIR/session_memory.js').then((mod) => { if (typeof mod.default?.execute !== 'function') throw new Error('tool execute missing') })"
         working-directory: packaging/npm/opencode-session-memory-sidebar
 
       - name: Smoke test standalone installer asset
         run: |
           TMP_DIR="$(mktemp -d)"
-          OPENCODE_SESSION_MEMORY_PLUGIN_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js" node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"
-          OPENCODE_SESSION_MEMORY_PLUGIN_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js" node ./dist/CancerBroker.cjs uninstall --config "$TMP_DIR/opencode.json"
+          OPENCODE_SESSION_MEMORY_TOOL_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js" node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"
+          OPENCODE_SESSION_MEMORY_TOOL_URL="file://$GITHUB_WORKSPACE/packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js" node ./dist/CancerBroker.cjs uninstall --config "$TMP_DIR/opencode.json"
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
 
       - name: Verify release metadata consistency
@@ -84,8 +84,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "${{ steps.release_tag.outputs.tag }}" >/dev/null 2>&1 \
-            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --clobber \
-            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/CancerBroker.plugin.js --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
+            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js --clobber \
+            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs packaging/npm/opencode-session-memory-sidebar/dist/session_memory.js --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
 
       - name: Verify published release asset
         run: node ./scripts/verify-installer-release.mjs --tag "${{ steps.release_tag.outputs.tag }}" --check-remote

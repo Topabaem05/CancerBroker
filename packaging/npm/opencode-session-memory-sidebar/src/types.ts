@@ -1,5 +1,4 @@
 export type ReasonCode =
-  | "sidebar_unsupported"
   | "platform_unsupported"
   | "session_api_unavailable"
   | "unavailable_shared_process"
@@ -9,7 +8,7 @@ export type ReasonCode =
 
 export type CapabilityDisabledReasonCode = Extract<
   ReasonCode,
-  "sidebar_unsupported" | "platform_unsupported" | "session_api_unavailable"
+  "platform_unsupported" | "session_api_unavailable"
 >;
 
 export type RamUnavailableReasonCode = Extract<

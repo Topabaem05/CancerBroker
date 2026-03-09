@@ -1,30 +1,26 @@
 import { expect, test } from "bun:test";
 
-import plugin, { opencodeSessionMemorySidebarPlugin } from "./index";
+import tool, { createSessionMemoryTool } from "./index";
 
-test("exports the plugin entrypoint as the default export", () => {
-  expect(plugin).toBe(opencodeSessionMemorySidebarPlugin);
-  expect(plugin).toBeInstanceOf(Function);
+test("exports the session_memory tool as the default export", () => {
+  const created = createSessionMemoryTool();
+  expect(tool.description).toBe(created.description);
+  expect(tool.args).toEqual(created.args);
+  expect(tool.description).toBeString();
+  expect(typeof tool.execute).toBe("function");
 });
 
-test("registers a supported session_memory tool", async () => {
-  const result = await plugin({
+test("builds a supported session_memory tool report", async () => {
+  const sessionMemoryTool = createSessionMemoryTool({
     platform: "darwin",
-    session: {
+    sessionApi: {
       list: async () => [{ id: "session-1", status: "running" }],
       get: async () => ({ id: "session-1" }),
       messages: async () => [],
     },
   });
 
-  const pluginRecord = asRecord(result);
-  const tool = asRecord(pluginRecord.tool);
-  const sessionMemory = asRecord(tool.session_memory);
-
-  expect(sessionMemory.description).toBeString();
-  expect(typeof sessionMemory.execute).toBe("function");
-
-  const output = await (sessionMemory.execute as (
+  const output = await (sessionMemoryTool.execute as (
     args: Record<string, never>,
     context: { sessionID?: string },
   ) => Promise<string>)({}, { sessionID: "session-1" });
@@ -33,11 +29,3 @@ test("registers a supported session_memory tool", async () => {
   expect(output).toContain("Summary:");
   expect(output).toContain("Current: session-1");
 });
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object") {
-    throw new Error("Expected an object record");
-  }
-
-  return value as Record<string, unknown>;
-}

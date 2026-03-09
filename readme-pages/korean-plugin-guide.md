@@ -1,16 +1,16 @@
-# 한국어 플러그인 가이드
+# 한국어 도구 가이드
 
 - [Back to Home](../README.md)
 - [Language Index](index.md)
 - [Back to Korean README](korean.md)
 
-## OpenCode Session Memory Plugin
+## OpenCode Session Memory Tool
 
-- 플러그인 목적:
+- 도구 목적:
   - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `session_memory` custom tool로 제공합니다.
   - 토큰/컨텍스트 사용량과 RAM 상태를 함께 요약하며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 `unavailable` 상태를 보여줍니다.
 
-- 현재 OpenCode 1.2.22는 공개 plugin sidebar API를 제공하지 않으므로, 이 플러그인은 custom sidebar가 아니라 supported tool surface를 사용합니다.
+- 현재 OpenCode 1.2.22는 지원되는 custom tools API를 제공하므로, 이 기능은 전역/프로젝트 tool로 설치됩니다.
 
 - 가장 쉬운 설치 방법 (git clone 불필요):
 
@@ -20,10 +20,10 @@ opencode --restart
 ```
 
 - 이 bootstrap script는 GitHub Releases의 최신 installer asset을 내려받습니다.
-- 설치가 끝나면 OpenCode가 자동 로드할 수 있도록 local plugin 파일을 생성합니다.
+- 설치가 끝나면 OpenCode가 자동 로드할 수 있도록 local tool 파일을 생성합니다.
 - 기본 설치 위치:
-  - 글로벌: `~/.config/opencode/plugins/CancerBroker.plugin.js`
-  - 프로젝트: `.opencode/plugins/CancerBroker.plugin.js`
+  - 글로벌: `~/.config/opencode/tools/session_memory.js`
+  - 프로젝트: `.opencode/tools/session_memory.js`
 
 - 요구 사항:
   - `node` 또는 `bun`이 설치되어 있어야 합니다.
@@ -92,8 +92,8 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 ```
 
 - 위 명령이 하는 일:
-  - 기본적으로 OpenCode plugin 디렉터리에 `CancerBroker.plugin.js`를 설치합니다.
-  - OpenCode는 다음 시작 시 local plugin 파일을 자동 로드합니다.
+  - 기본적으로 OpenCode tools 디렉터리에 `session_memory.js`를 설치합니다.
+  - OpenCode는 다음 시작 시 local tool 파일을 자동 로드합니다.
   - 예전에 남아 있던 기본 npm plugin entry가 있으면 `opencode.json`에서 자동 제거합니다.
 
 - 프로젝트 로컬로만 추가하고 싶을 때:
@@ -118,7 +118,7 @@ session-memory-plugin add
 session-memory-plugin remove
 ```
 
-- `remove`는 기본 local install 경로에서는 실제 plugin 파일을 제거하고, 남아 있던 기본 npm plugin entry가 있으면 `opencode.json`에서도 같이 정리합니다.
+- `remove`는 기본 local install 경로에서는 실제 tool 파일을 제거하고, 남아 있던 기본 npm plugin entry가 있으면 `opencode.json`에서도 같이 정리합니다.
 - OpenCode도 같이 재시작하고 싶으면 `--restart`를 붙일 수 있습니다.
 
 - 제거:
@@ -134,7 +134,7 @@ opencode --restart
   - npm publish workflow: `.github/workflows/npm-publish.yml`
 
 - 배포 원칙:
-  - 현재 기본 배포 경로는 release asset 기반 local plugin 설치입니다.
+  - 현재 기본 배포 경로는 release asset 기반 local tool 설치입니다.
   - 필요하면 이후에 `opencode-session-memory-sidebar` npm publish도 지원할 수 있습니다.
   - installer 패키지 버전과 release asset 태그는 계속 관리합니다.
   - Homebrew 경로도 public 저장소 기준으로 사용할 수 있습니다.
@@ -151,8 +151,8 @@ node ./scripts/prepare-installer-release.mjs 0.1.1
 - 로컬 개발용 설치 위치 (수동 개발/디버깅):
 
 ```bash
-ls ~/.config/opencode/plugins/opencode-session-memory-sidebar.ts
-ls ~/.config/opencode/plugins/opencode-session-memory-sidebar
+ls ~/.config/opencode/tools/session_memory.js
+ls ./.opencode/tools/session_memory.js
 ```
 
 - 패키지 검증:
@@ -179,12 +179,10 @@ session-memory-plugin add --config /tmp/opencode-session-memory-sidebar-test.jso
 session-memory-plugin remove --config /tmp/opencode-session-memory-sidebar-test.json
 ```
 
-- 기존 플러그인 런타임 테스트:
+- 기존 로컬 tool 런타임 테스트:
 
 ```bash
-cd ~/.config/opencode/plugins/opencode-session-memory-sidebar
-bun install
-bun test
+node ~/.config/opencode/tools/session_memory.js
 ```
 
 - OpenCode 재시작:
@@ -193,8 +191,8 @@ bun test
 opencode --restart
 ```
 
-- 화면에서 확인할 항목:
-  - 패널 제목: `Session Memory`
+- 도구 출력에서 확인할 항목:
+  - 제목: `Session Memory`
   - 요약 항목: `Live`, `Exact RAM`, `Exact Total`, `Unavailable`
   - 세션 행: `Current <session-id>`, `Other <session-id>`
 

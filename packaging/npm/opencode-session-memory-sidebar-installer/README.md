@@ -1,10 +1,10 @@
 # opencode-session-memory-sidebar-installer
 
-Clone-free installer for the OpenCode `Session Memory` plugin.
+Clone-free installer for the OpenCode `Session Memory` tool.
 
-This package installs a bundled local plugin file into OpenCode's plugin directory so the plugin works even before the npm package is published.
+This package installs a bundled local tool file into OpenCode's tool directory so Session Memory works even before any npm publication.
 
-Important: OpenCode 1.2.22 does not currently expose a supported plugin sidebar API. The installed plugin provides a supported custom tool (`session_memory`) instead of a custom sidebar panel.
+Important: OpenCode 1.2.22 supports custom tools via `.opencode/tools/` and `~/.config/opencode/tools/`. This installer uses that supported path and installs a `session_memory` tool.
 
 ## Install (no git clone)
 
@@ -16,10 +16,10 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 
 The bootstrap script fetches the latest published installer asset from GitHub Releases.
 
-Installed plugin locations:
+Installed tool locations:
 
-- Global: `~/.config/opencode/plugins/CancerBroker.plugin.js`
-- Project: `.opencode/plugins/CancerBroker.plugin.js`
+- Global: `~/.config/opencode/tools/session_memory.js`
+- Project: `.opencode/tools/session_memory.js`
 
 - Requirements:
   - `node` or `bun` installed locally
@@ -93,7 +93,7 @@ It updates `package.json`, rebuilds the standalone installer, refreshes the Home
 
 ## Future npm path
 
-The default installer path uses a local plugin file. If you explicitly want npm-package registration instead, pass `--package`.
+The default installer path uses a local tool file. If you explicitly want npm-package registration instead, pass `--package`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package opencode-session-memory-sidebar
@@ -157,14 +157,14 @@ session-memory-plugin add
 session-memory-plugin remove
 ```
 
-- `remove` deletes the installed local plugin file and also removes the default npm plugin entry if it was left behind.
+- `remove` deletes the installed local tool file and also removes the default npm plugin entry if it was left behind.
 - Pass `--config`, `--package`, and `--project` through exactly as you would with the installer.
 - Add `--restart` if you want the helper to run `opencode --restart` after the config update.
 
 ## Notes
 
-- Installs `CancerBroker.plugin.js` into OpenCode's plugin directory by default
-- Cleans up stale default npm plugin entries from `opencode.json`
+- Installs `session_memory.js` into OpenCode's tools directory by default
+- Cleans up stale local plugin files and default npm plugin entries from `opencode.json`
 - Supports `--package` to target a scoped npm package name
 - Supports JSONC comments/trailing commas
 - Creates a timestamped backup before write

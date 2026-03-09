@@ -15,7 +15,7 @@ cd CancerBroker
 cargo build --release
 ```
 
-- OpenCode Session Memory 플러그인을 clone 없이 설치합니다:
+- OpenCode Session Memory 도구를 clone 없이 설치합니다:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
@@ -29,7 +29,7 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 opencode --restart
 ```
 
-- OpenCode 1.2.22에서는 custom sidebar가 아니라 supported custom tool `session_memory`로 로드됩니다.
+- OpenCode 1.2.22에서는 기본적으로 `~/.config/opencode/tools/`에 설치되는 전역 custom tool `session_memory`로 로드됩니다.
 
 - Homebrew에 explicit tap URL이 필요하면:
 
@@ -59,7 +59,7 @@ cargo run -- --config fixtures/config/observe-only.toml run-once --json
 cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
 ```
 
-## OpenCode Session Memory Plugin
+## OpenCode Session Memory Tool
 
 - 한국어 플러그인 가이드는 별도 페이지로 분리했습니다.
 - [한국어 플러그인 가이드](korean-plugin-guide.md)

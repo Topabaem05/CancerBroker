@@ -1,5 +1,5 @@
 class OpencodeSessionMemorySidebarInstaller < Formula
-  desc "Installer for the OpenCode Session Memory sidebar plugin"
+  desc "Installer for the OpenCode Session Memory tool"
   homepage "https://github.com/Topabaem05/CancerBroker"
   url "https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.4/CancerBroker.cjs"
   version "0.1.4"

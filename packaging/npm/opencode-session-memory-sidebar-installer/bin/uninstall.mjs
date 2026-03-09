@@ -6,6 +6,7 @@ import {
   uninstallPluginFromConfig,
 } from "./config-file.mjs";
 import { uninstallLocalPlugin } from "./plugin-file.mjs";
+import { uninstallLocalTool } from "./tool-file.mjs";
 
 export default async function runUninstall(argv = process.argv.slice(2)) {
   const flags = parseFlags(argv);
@@ -26,14 +27,22 @@ export default async function runUninstall(argv = process.argv.slice(2)) {
     return;
   }
 
-  const fileResult = uninstallLocalPlugin(flags);
-  if (fileResult.changed) {
-    console.log(`[opencode-session-memory-sidebar] Removed local plugin at ${fileResult.pluginFilePath}`);
-    if (fileResult.backupPath) {
-      console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult.backupPath}`);
+  const toolResult = uninstallLocalTool(flags);
+  if (toolResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed local tool at ${toolResult.toolFilePath}`);
+    if (toolResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${toolResult.backupPath}`);
     }
   } else {
-    console.log(`[opencode-session-memory-sidebar] Local plugin not present at ${fileResult.pluginFilePath}`);
+    console.log(`[opencode-session-memory-sidebar] Local tool not present at ${toolResult.toolFilePath}`);
+  }
+
+  const legacyPluginCleanup = uninstallLocalPlugin(flags);
+  if (legacyPluginCleanup.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup.pluginFilePath}`);
+    if (legacyPluginCleanup.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${legacyPluginCleanup.backupPath}`);
+    }
   }
 
   const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);

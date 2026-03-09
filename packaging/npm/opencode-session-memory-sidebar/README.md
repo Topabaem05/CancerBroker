@@ -1,8 +1,8 @@
 # opencode-session-memory-sidebar
 
-OpenCode plugin that exposes session memory data through a supported custom tool.
+OpenCode custom tool package that exposes session memory data through the supported tool system.
 
-## Install via local plugin file
+## Install as a global tool
 
 Recommended no-clone install:
 
@@ -11,24 +11,14 @@ curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/instal
 opencode --restart
 ```
 
-This installs `CancerBroker.plugin.js` into `~/.config/opencode/plugins/` so OpenCode loads it automatically at startup.
+This installs `session_memory.js` into `~/.config/opencode/tools/` so OpenCode loads it automatically at startup as a global custom tool.
 
 ## What it does
 
-OpenCode 1.2.22 does not currently expose a public plugin sidebar API. Instead of an unsupported sidebar panel, this plugin registers a custom tool named `session_memory` that returns:
+OpenCode 1.2.22 exposes a supported custom tool API, not a public plugin sidebar API. This package installs a custom tool named `session_memory` that returns:
 
 - live session counts
 - token totals for the current and other sessions
 - RAM attribution coverage and totals
 
 Ask OpenCode to use the `session_memory` tool when you want the latest snapshot.
-
-## Install via config
-
-```json
-{
-  "plugin": ["opencode-session-memory-sidebar"]
-}
-```
-
-Use the config form only if you explicitly want npm-package registration.

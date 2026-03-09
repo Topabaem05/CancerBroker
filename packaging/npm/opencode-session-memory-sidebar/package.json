@@ -1,18 +1,21 @@
 {
   "name": "opencode-session-memory-sidebar",
   "version": "0.1.0",
-  "description": "Session Memory sidebar plugin for OpenCode",
+  "description": "Session Memory tool for OpenCode",
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
     "test": "bun test",
-    "build:standalone": "bunx esbuild ./src/index.ts --bundle --platform=node --format=esm --outfile=./dist/CancerBroker.plugin.js"
+    "build:standalone": "bunx esbuild ./src/index.ts --bundle --platform=node --format=esm --outfile=./dist/session_memory.js"
   },
   "files": [
     "src",
     "dist",
     "README.md"
   ],
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.2.22"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2",
     "@types/bun": "latest",
@@ -20,8 +23,7 @@
   },
   "keywords": [
     "opencode",
-    "plugin",
-    "sidebar",
+    "tool",
     "memory"
   ],
   "license": "MIT"

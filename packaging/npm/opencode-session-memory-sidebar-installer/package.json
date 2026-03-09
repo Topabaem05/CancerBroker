@@ -4,7 +4,7 @@
   "bin": {
     "opencode-session-memory-sidebar-installer": "./bin/install.mjs"
   },
-  "description": "Clone-free config installer for OpenCode Session Memory sidebar plugin",
+  "description": "Clone-free installer for the OpenCode Session Memory tool",
   "files": [
     "bin",
     "dist",

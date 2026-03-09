@@ -1,127 +1,102 @@
+import { createOpencodeClient } from "@opencode-ai/sdk";
+
 import type { RuntimeCapabilityProbeInput } from "./capabilities";
 import type { SessionApiLike } from "./live-sessions";
-import {
-  buildSessionMemorySnapshot,
-  buildSidebarItems,
-  buildSidebarPanelModel,
-} from "./sidebar";
+import { buildSessionMemorySnapshot, buildSidebarItems, buildSidebarPanelModel } from "./sidebar";
 
-export async function opencodeSessionMemorySidebarPlugin(
-  context: unknown = {},
-): Promise<Record<string, unknown>> {
-  const sessionApi = resolveSessionApi(context);
-  const platform = resolvePlatform(context);
-  const capabilityProbeInput: RuntimeCapabilityProbeInput = {
-    platform,
-    sidebarHook: () => [],
-    sessionApi,
-  };
+const DEFAULT_SERVER_URL = process.env.OPENCODE_SERVER_URL || "http://localhost:4096";
 
-  const snapshot = (currentSessionId?: string) =>
-    buildSessionMemorySnapshot({
-      capabilityProbeInput,
-      sessionApi,
-      currentSessionId,
-    });
+export interface SessionMemoryToolContext {
+  readonly sessionID?: string;
+  readonly directory?: string;
+}
 
+export interface CreateSessionMemoryToolOptions {
+  readonly platform?: string;
+  readonly sessionApi?: SessionApiLike;
+  readonly serverUrl?: string;
+}
+
+export function createSessionMemoryTool(options: CreateSessionMemoryToolOptions = {}) {
   return {
-    tool: {
-      session_memory: {
-        description:
-          "Summarize live OpenCode session memory, token usage, and RAM attribution for the current session set.",
-        args: {},
-        execute: async (_args: Record<string, never>, toolContext: { sessionID?: string }) => {
-          const model = buildSidebarPanelModel(await snapshot(toolContext?.sessionID));
-          return formatSessionMemoryReport(model);
-        },
-      },
+    description:
+      "Summarize live OpenCode session memory, token usage, and RAM attribution for the current session set.",
+    args: {},
+    execute: async (_args: Record<string, never>, context: SessionMemoryToolContext): Promise<string> => {
+      const sessionApi = options.sessionApi ?? createRuntimeSessionApi(context, options.serverUrl);
+      const capabilityProbeInput: RuntimeCapabilityProbeInput = {
+        platform: options.platform ?? process.platform,
+        sessionApi,
+      };
+      const snapshot = await buildSessionMemorySnapshot({
+        capabilityProbeInput,
+        sessionApi,
+        currentSessionId: context.sessionID,
+      });
+
+      return formatSessionMemoryReport(buildSidebarPanelModel(snapshot));
     },
   };
 }
 
-export default opencodeSessionMemorySidebarPlugin;
+const sessionMemoryTool = createSessionMemoryTool();
 
-function resolveSessionApi(context: unknown): SessionApiLike {
-  const fallback = createNoopSessionApi();
-  const candidate = asRecord(context);
-  if (!candidate) {
-    return fallback;
-  }
+export default sessionMemoryTool;
 
-  const client = asRecord(candidate.client);
-  const roots: unknown[] = [
-    candidate.session,
-    candidate.sessions,
-    client?.session,
-    asRecord(client?.api)?.session,
-    asRecord(client?.experimental)?.session,
-    asRecord(candidate.api)?.session,
-    asRecord(candidate.experimental)?.session,
-  ];
+function createRuntimeSessionApi(context: SessionMemoryToolContext, serverUrl = DEFAULT_SERVER_URL): SessionApiLike {
+  const client = createOpencodeClient({
+    baseUrl: serverUrl,
+    directory: context.directory,
+  });
 
-  for (const root of roots) {
-    const sessionApi = asSessionApiLike(root);
-    if (sessionApi) {
-      return sessionApi;
-    }
-  }
-
-  return fallback;
-}
-
-function resolvePlatform(context: unknown): string {
-  const candidate = asRecord(context);
-  if (!candidate) {
-    return process.platform;
-  }
-
-  if (typeof candidate.platform === "string" && candidate.platform.length > 0) {
-    return candidate.platform;
-  }
-
-  const system = asRecord(candidate.system);
-  if (typeof system?.platform === "string" && system.platform.length > 0) {
-    return system.platform;
-  }
-
-  return process.platform;
-}
-
-function createNoopSessionApi(): SessionApiLike {
   return {
-    list: async () => [],
-    get: async () => undefined,
-    messages: async () => [],
+    list: (input?: unknown) => client.session.list({ query: input as Record<string, unknown> | undefined }),
+    get: (input?: unknown) => {
+      if (!input || typeof input !== "object") {
+        return client.session.status();
+      }
+
+      const record = input as Record<string, unknown>;
+      const id =
+        (typeof record.id === "string" && record.id) ||
+        (typeof record.sessionId === "string" && record.sessionId) ||
+        (typeof record.session_id === "string" && record.session_id) ||
+        undefined;
+
+      return id ? client.session.get({ path: { id } }) : client.session.status();
+    },
+    messages: (input?: unknown) => {
+      const id = resolveSessionId(input);
+      if (!id) {
+        return Promise.resolve([]);
+      }
+
+      return client.session.messages({ path: { id } });
+    },
   };
 }
 
-function asSessionApiLike(value: unknown): SessionApiLike | null {
-  const record = asRecord(value);
-  if (!record) {
-    return null;
+function resolveSessionId(input: unknown): string | undefined {
+  if (typeof input === "string" && input.length > 0) {
+    return input;
   }
 
-  if (
-    typeof record.list === "function" &&
-    typeof record.get === "function" &&
-    typeof record.messages === "function"
-  ) {
-    return {
-      list: record.list as SessionApiLike["list"],
-      get: record.get as SessionApiLike["get"],
-      messages: record.messages as SessionApiLike["messages"],
-    };
+  if (!input || typeof input !== "object") {
+    return undefined;
   }
 
-  return null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") {
-    return null;
+  const record = input as Record<string, unknown>;
+  if (typeof record.sessionId === "string" && record.sessionId.length > 0) {
+    return record.sessionId;
+  }
+  if (typeof record.id === "string" && record.id.length > 0) {
+    return record.id;
+  }
+  if (typeof record.session_id === "string" && record.session_id.length > 0) {
+    return record.session_id;
   }
 
-  return value as Record<string, unknown>;
+  return undefined;
 }
 
 function formatSessionMemoryReport(model: ReturnType<typeof buildSidebarPanelModel>): string {
