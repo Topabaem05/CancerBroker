@@ -4,11 +4,13 @@
 - [Language Index](index.md)
 - [Back to Korean README](korean.md)
 
-## OpenCode Session Memory Sidebar Plugin
+## OpenCode Session Memory Plugin
 
-- 사이드바 플러그인 목적:
-  - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `Session Memory` 패널로 표시합니다.
-  - 토큰/컨텍스트 사용량과 RAM 상태를 함께 보여주며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 숫자 대신 `unavailable` 상태를 표시합니다.
+- 플러그인 목적:
+  - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `session_memory` custom tool로 제공합니다.
+  - 토큰/컨텍스트 사용량과 RAM 상태를 함께 요약하며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 `unavailable` 상태를 보여줍니다.
+
+- 현재 OpenCode 1.2.22는 공개 plugin sidebar API를 제공하지 않으므로, 이 플러그인은 custom sidebar가 아니라 supported tool surface를 사용합니다.
 
 - 가장 쉬운 설치 방법 (git clone 불필요):
 

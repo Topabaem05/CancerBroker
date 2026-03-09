@@ -1041,17 +1041,22 @@ async function opencodeSessionMemorySidebarPlugin(context = {}) {
     sidebarHook: () => [],
     sessionApi
   };
-  const snapshot = () => buildSessionMemorySnapshot({
+  const snapshot = (currentSessionId) => buildSessionMemorySnapshot({
     capabilityProbeInput,
-    sessionApi
+    sessionApi,
+    currentSessionId
   });
   return {
-    sidebar: [
-      createSessionMemorySidebarDefinition({
-        id: "session-memory",
-        snapshot
-      })
-    ]
+    tool: {
+      session_memory: {
+        description: "Summarize live OpenCode session memory, token usage, and RAM attribution for the current session set.",
+        args: {},
+        execute: async (_args, toolContext) => {
+          const model = buildSidebarPanelModel(await snapshot(toolContext?.sessionID));
+          return formatSessionMemoryReport(model);
+        }
+      }
+    }
   };
 }
 var index_default = opencodeSessionMemorySidebarPlugin;
@@ -1119,6 +1124,29 @@ function asRecord(value) {
     return null;
   }
   return value;
+}
+function formatSessionMemoryReport(model) {
+  const items = buildSidebarItems(model);
+  const lines = ["# Session Memory"];
+  if (model.capability.state === "disabled") {
+    lines.push(`Capability: disabled (${model.capability.reason})`);
+    lines.push(model.capability.message);
+    return lines.join("\n");
+  }
+  lines.push("Summary:");
+  for (const item of items.filter((item2) => item2.id.startsWith("summary."))) {
+    lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
+  }
+  if (model.current) {
+    lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
+  }
+  if (model.others.length > 0) {
+    lines.push("Other live sessions:");
+    for (const row of model.others) {
+      lines.push(`- ${row.sessionId} | tokens ${row.tokensTotal} | RAM ${row.ramLabel}`);
+    }
+  }
+  return lines.join("\n");
 }
 export {
   DISABLED_REASON_MESSAGES,

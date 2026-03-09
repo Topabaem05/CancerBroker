@@ -1,8 +1,10 @@
 # opencode-session-memory-sidebar-installer
 
-Clone-free installer for the OpenCode `Session Memory` sidebar plugin.
+Clone-free installer for the OpenCode `Session Memory` plugin.
 
-This package installs a bundled local plugin file into OpenCode's plugin directory so the sidebar works even before the npm plugin package is published.
+This package installs a bundled local plugin file into OpenCode's plugin directory so the plugin works even before the npm package is published.
+
+Important: OpenCode 1.2.22 does not currently expose a supported plugin sidebar API. The installed plugin provides a supported custom tool (`session_memory`) instead of a custom sidebar panel.
 
 ## Install (no git clone)
 

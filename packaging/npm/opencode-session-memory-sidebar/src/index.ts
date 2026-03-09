@@ -1,6 +1,10 @@
 import type { RuntimeCapabilityProbeInput } from "./capabilities";
 import type { SessionApiLike } from "./live-sessions";
-import { buildSessionMemorySnapshot, createSessionMemorySidebarDefinition } from "./sidebar";
+import {
+  buildSessionMemorySnapshot,
+  buildSidebarItems,
+  buildSidebarPanelModel,
+} from "./sidebar";
 
 export async function opencodeSessionMemorySidebarPlugin(
   context: unknown = {},
@@ -13,19 +17,25 @@ export async function opencodeSessionMemorySidebarPlugin(
     sessionApi,
   };
 
-  const snapshot = () =>
+  const snapshot = (currentSessionId?: string) =>
     buildSessionMemorySnapshot({
       capabilityProbeInput,
       sessionApi,
+      currentSessionId,
     });
 
   return {
-    sidebar: [
-      createSessionMemorySidebarDefinition({
-        id: "session-memory",
-        snapshot,
-      }),
-    ],
+    tool: {
+      session_memory: {
+        description:
+          "Summarize live OpenCode session memory, token usage, and RAM attribution for the current session set.",
+        args: {},
+        execute: async (_args: Record<string, never>, toolContext: { sessionID?: string }) => {
+          const model = buildSidebarPanelModel(await snapshot(toolContext?.sessionID));
+          return formatSessionMemoryReport(model);
+        },
+      },
+    },
   };
 }
 
@@ -112,6 +122,35 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   }
 
   return value as Record<string, unknown>;
+}
+
+function formatSessionMemoryReport(model: ReturnType<typeof buildSidebarPanelModel>): string {
+  const items = buildSidebarItems(model);
+  const lines = ["# Session Memory"];
+
+  if (model.capability.state === "disabled") {
+    lines.push(`Capability: disabled (${model.capability.reason})`);
+    lines.push(model.capability.message);
+    return lines.join("\n");
+  }
+
+  lines.push("Summary:");
+  for (const item of items.filter((item) => item.id.startsWith("summary."))) {
+    lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
+  }
+
+  if (model.current) {
+    lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
+  }
+
+  if (model.others.length > 0) {
+    lines.push("Other live sessions:");
+    for (const row of model.others) {
+      lines.push(`- ${row.sessionId} | tokens ${row.tokensTotal} | RAM ${row.ramLabel}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 export * from "./capabilities";

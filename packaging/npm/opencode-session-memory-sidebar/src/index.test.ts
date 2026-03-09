@@ -7,7 +7,7 @@ test("exports the plugin entrypoint as the default export", () => {
   expect(plugin).toBeInstanceOf(Function);
 });
 
-test("builds a sidebar definition with runtime items", async () => {
+test("registers a supported session_memory tool", async () => {
   const result = await plugin({
     platform: "darwin",
     session: {
@@ -18,22 +18,20 @@ test("builds a sidebar definition with runtime items", async () => {
   });
 
   const pluginRecord = asRecord(result);
-  const sidebar = pluginRecord.sidebar;
+  const tool = asRecord(pluginRecord.tool);
+  const sessionMemory = asRecord(tool.session_memory);
 
-  expect(Array.isArray(sidebar)).toBe(true);
-  if (!Array.isArray(sidebar)) {
-    throw new Error("Expected sidebar array");
-  }
-  expect(sidebar).toHaveLength(1);
+  expect(sessionMemory.description).toBeString();
+  expect(typeof sessionMemory.execute).toBe("function");
 
-  const definition = asRecord(sidebar[0]);
-  expect(definition.id).toBe("session-memory");
-  expect(definition.title).toBe("Session Memory");
-  expect(typeof definition.items).toBe("function");
+  const output = await (sessionMemory.execute as (
+    args: Record<string, never>,
+    context: { sessionID?: string },
+  ) => Promise<string>)({}, { sessionID: "session-1" });
 
-  const items = await (definition.items as () => Promise<unknown[]>)();
-  expect(Array.isArray(items)).toBe(true);
-  expect(items.some(isLiveSummaryItem)).toBe(true);
+  expect(output).toContain("# Session Memory");
+  expect(output).toContain("Summary:");
+  expect(output).toContain("Current: session-1");
 });
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -42,13 +40,4 @@ function asRecord(value: unknown): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
-}
-
-function isLiveSummaryItem(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  return candidate.id === "summary.live" && candidate.label === "Live";
 }

@@ -29,6 +29,8 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 opencode --restart
 ```
 
+- En OpenCode 1.2.22 se carga como la herramienta personalizada compatible `session_memory`, no como un panel lateral personalizado.
+
 - Si Homebrew necesita una URL de tap explicita:
 
 ```bash

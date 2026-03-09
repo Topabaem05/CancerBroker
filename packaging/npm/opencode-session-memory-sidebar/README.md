@@ -1,6 +1,6 @@
 # opencode-session-memory-sidebar
 
-OpenCode sidebar plugin that shows live session token usage and RAM availability.
+OpenCode plugin that exposes session memory data through a supported custom tool.
 
 ## Install via local plugin file
 
@@ -12,6 +12,16 @@ opencode --restart
 ```
 
 This installs `CancerBroker.plugin.js` into `~/.config/opencode/plugins/` so OpenCode loads it automatically at startup.
+
+## What it does
+
+OpenCode 1.2.22 does not currently expose a public plugin sidebar API. Instead of an unsupported sidebar panel, this plugin registers a custom tool named `session_memory` that returns:
+
+- live session counts
+- token totals for the current and other sessions
+- RAM attribution coverage and totals
+
+Ask OpenCode to use the `session_memory` tool when you want the latest snapshot.
 
 ## Install via config
 

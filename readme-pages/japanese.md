@@ -15,7 +15,7 @@ cd CancerBroker
 cargo build --release
 ```
 
-- リポジトリをクローンせずに OpenCode Session Memory サイドバープラグインをインストールします:
+- リポジトリをクローンせずに OpenCode Session Memory プラグインをインストールします:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
@@ -28,6 +28,8 @@ opencode --restart
 brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 opencode --restart
 ```
+
+- OpenCode 1.2.22 では、これはカスタムサイドバーではなく、サポートされたカスタムツール `session_memory` として読み込まれます。
 
 - Homebrew で明示的な tap URL が必要な場合:
 

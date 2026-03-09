@@ -6,6 +6,8 @@ Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 
 ## Plugin Install
 
+OpenCode 1.2.22 does not currently expose a supported plugin sidebar API. The installed plugin provides a supported custom tool named `session_memory`.
+
 Curl:
 
 ```bash

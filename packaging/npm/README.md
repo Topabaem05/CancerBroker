@@ -5,6 +5,7 @@
 - `opencode-session-memory-sidebar`
   - Actual OpenCode plugin package.
   - Bundled into a local plugin asset for clone-free installs.
+  - Currently exposes a supported custom tool (`session_memory`) instead of a custom sidebar panel.
   - Can still be published to npm later for `plugin` array based installs.
 
 - `opencode-session-memory-sidebar-installer`
