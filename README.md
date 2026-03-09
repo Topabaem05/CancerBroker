@@ -4,6 +4,30 @@
 
 Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 
+## Plugin Install
+
+Curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+opencode --restart
+```
+
+Homebrew:
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
+If Homebrew needs an explicit tap URL:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
 ## Quick Start
 
 ```bash

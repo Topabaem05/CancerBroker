@@ -15,6 +15,28 @@ cd CancerBroker
 cargo build --release
 ```
 
+- OpenCode Session Memory 사이드바 플러그인을 clone 없이 설치합니다:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+opencode --restart
+```
+
+- Homebrew로 설치합니다:
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
+- Homebrew에 explicit tap URL이 필요하면:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
 ## Usage
 
 - 현재 동작 모드를 확인합니다:

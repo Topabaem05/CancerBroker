@@ -15,6 +15,28 @@ cd CancerBroker
 cargo build --release
 ```
 
+- Install the OpenCode Session Memory sidebar plugin without cloning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
+opencode --restart
+```
+
+- Install it with Homebrew:
+
+```bash
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
+- If Homebrew needs an explicit tap URL:
+
+```bash
+brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
+brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
+opencode --restart
+```
+
 ## Usage
 
 - Check the current mode:
