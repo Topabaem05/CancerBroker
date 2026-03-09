@@ -252,6 +252,9 @@ var import_node_os2 = require("node:os");
 var DEFAULT_PLUGIN_ASSET_NAME = "CancerBroker.plugin.js";
 var DEFAULT_PLUGIN_URL = process.env.OPENCODE_SESSION_MEMORY_PLUGIN_URL || `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_PLUGIN_ASSET_NAME}`;
 function resolvePluginDirectory(options = {}) {
+  if (options.configPath) {
+    return (0, import_node_path2.join)((0, import_node_path2.dirname)(options.configPath), "plugins");
+  }
   if (options.project) {
     return (0, import_node_path2.join)(process.cwd(), ".opencode", "plugins");
   }

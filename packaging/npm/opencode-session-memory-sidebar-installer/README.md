@@ -76,7 +76,7 @@ brew uninstall opencode-session-memory-sidebar-installer
 Current versioned release asset URL used by the formula:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.2/CancerBroker.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.3/CancerBroker.cjs
 ```
 
 ## Release automation

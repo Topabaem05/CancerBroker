@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
 export const DEFAULT_PLUGIN_ASSET_NAME = "CancerBroker.plugin.js";
@@ -8,6 +8,10 @@ export const DEFAULT_PLUGIN_URL =
   `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_PLUGIN_ASSET_NAME}`;
 
 export function resolvePluginDirectory(options = {}) {
+  if (options.configPath) {
+    return join(dirname(options.configPath), "plugins");
+  }
+
   if (options.project) {
     return join(process.cwd(), ".opencode", "plugins");
   }
