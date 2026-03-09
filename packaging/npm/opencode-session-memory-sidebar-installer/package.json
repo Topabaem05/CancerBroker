@@ -14,7 +14,7 @@
   "scripts": {
     "install-local": "node ./bin/install.mjs",
     "uninstall-local": "node ./bin/uninstall.mjs",
-    "build:standalone": "bunx esbuild ./bin/standalone.mjs --bundle --platform=node --format=cjs --outfile=./dist/opencode-session-memory-sidebar-installer.cjs"
+    "build:standalone": "bunx esbuild ./bin/standalone.mjs --bundle --platform=node --format=cjs --outfile=./dist/CancerBroker.cjs"
   },
   "dependencies": {
     "jsonc-parser": "^3.3.1"

@@ -21,7 +21,7 @@ if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
 
 const repoRoot = resolveRepoRoot(args.slice(1));
 const installerTag = `CancerBroker-v${version}`;
-const releaseAssetUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${installerTag}/opencode-session-memory-sidebar-installer.cjs`;
+const releaseAssetUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${installerTag}/CancerBroker.cjs`;
 
 const installerPackageJsonPath = resolve(repoRoot, "packaging/npm/opencode-session-memory-sidebar-installer/package.json");
 const formulaPath = resolve(repoRoot, "Formula/opencode-session-memory-sidebar-installer.rb");
@@ -37,7 +37,7 @@ buildStandaloneInstaller(repoRoot);
 
 const standaloneAssetPath = resolve(
   repoRoot,
-  "packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs",
+  "packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs",
 );
 const sha256 = hashFile(standaloneAssetPath);
 
@@ -53,7 +53,7 @@ process.stdout.write(
     `Asset URL: ${releaseAssetUrl}`,
     `SHA256: ${sha256}`,
     "Next steps:",
-    `  git add packaging/npm/opencode-session-memory-sidebar-installer/package.json packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs Formula/opencode-session-memory-sidebar-installer.rb packaging/npm/opencode-session-memory-sidebar-installer/README.md packaging/npm/README.md readme-pages/korean-plugin-guide.md`,
+    `  git add packaging/npm/opencode-session-memory-sidebar-installer/package.json packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs Formula/opencode-session-memory-sidebar-installer.rb packaging/npm/opencode-session-memory-sidebar-installer/README.md packaging/npm/README.md readme-pages/korean-plugin-guide.md`,
     `  git commit -m \"Prepare installer release v${version}\"`,
     "  git push origin main",
     `  git tag ${installerTag}`,
@@ -113,7 +113,7 @@ function updateFormula(filePath, versionValue, assetUrl, digest) {
 function replaceReleaseAssetUrls(filePath, assetUrl) {
   const content = readFileSync(filePath, "utf8");
   const updated = content.replace(
-    /https:\/\/github\.com\/Topabaem05\/CancerBroker\/releases\/download\/CancerBroker-v[^\s)`]+\/opencode-session-memory-sidebar-installer\.cjs/g,
+    /https:\/\/github\.com\/Topabaem05\/CancerBroker\/releases\/download\/CancerBroker-v[^\s)`]+\/CancerBroker\.cjs/g,
     assetUrl,
   );
   writeFileSync(filePath, updated);

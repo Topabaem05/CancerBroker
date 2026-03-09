@@ -4,8 +4,8 @@ set -eu
 
 INSTALLER_REPO=${OPENCODE_SIDEBAR_INSTALLER_REPO:-"Topabaem05/CancerBroker"}
 INSTALLER_REF=${OPENCODE_SIDEBAR_INSTALLER_REF:-"main"}
-INSTALLER_CONTENT_PATH=${OPENCODE_SIDEBAR_INSTALLER_CONTENT_PATH:-"packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs"}
-INSTALLER_URL=${OPENCODE_SIDEBAR_INSTALLER_URL:-"https://github.com/$INSTALLER_REPO/releases/latest/download/opencode-session-memory-sidebar-installer.cjs"}
+INSTALLER_CONTENT_PATH=${OPENCODE_SIDEBAR_INSTALLER_CONTENT_PATH:-"packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs"}
+INSTALLER_URL=${OPENCODE_SIDEBAR_INSTALLER_URL:-"https://github.com/$INSTALLER_REPO/releases/latest/download/CancerBroker.cjs"}
 
 if ! command -v curl >/dev/null 2>&1; then
   printf '%s\n' "curl is required to fetch the installer." >&2
@@ -27,7 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-INSTALLER_PATH="$TMP_DIR/opencode-session-memory-sidebar-installer.cjs"
+INSTALLER_PATH="$TMP_DIR/CancerBroker.cjs"
 
 if ! curl -fsSL "$INSTALLER_URL" -o "$INSTALLER_PATH"; then
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then

@@ -57,8 +57,8 @@ jobs:
       - name: Smoke test standalone installer asset
         run: |
           TMP_DIR="$(mktemp -d)"
-          node ./dist/opencode-session-memory-sidebar-installer.cjs --config "$TMP_DIR/opencode.json"
-          node ./dist/opencode-session-memory-sidebar-installer.cjs uninstall --config "$TMP_DIR/opencode.json"
+          node ./dist/CancerBroker.cjs --config "$TMP_DIR/opencode.json"
+          node ./dist/CancerBroker.cjs uninstall --config "$TMP_DIR/opencode.json"
         working-directory: packaging/npm/opencode-session-memory-sidebar-installer
 
       - name: Create or update GitHub Release
@@ -66,5 +66,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "${{ steps.release_tag.outputs.tag }}" >/dev/null 2>&1 \
-            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --clobber \
-            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/opencode-session-memory-sidebar-installer.cjs --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
+            && gh release upload "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --clobber \
+            || gh release create "${{ steps.release_tag.outputs.tag }}" packaging/npm/opencode-session-memory-sidebar-installer/dist/CancerBroker.cjs --generate-notes --title "${{ steps.release_tag.outputs.tag }}"
