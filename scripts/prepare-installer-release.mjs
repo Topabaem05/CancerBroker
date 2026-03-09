@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -46,6 +46,8 @@ for (const docPath of docsPaths) {
   replaceReleaseAssetUrls(docPath, releaseAssetUrl);
 }
 
+verifyInstallerRelease(repoRoot, installerTag);
+
 process.stdout.write(
   [
     `Prepared installer release ${version}.`,
@@ -81,10 +83,13 @@ function updateInstallerPackageJson(filePath, versionValue) {
 }
 
 function installInstallerDependencies(repoRootValue) {
+  const installerDir = resolve(repoRootValue, "packaging/npm/opencode-session-memory-sidebar-installer");
+  const hasLockfile = existsSync(resolve(installerDir, "bun.lock")) || existsSync(resolve(installerDir, "bun.lockb"));
+
   runCommand(
     "bun",
-    ["install", "--frozen-lockfile"],
-    resolve(repoRootValue, "packaging/npm/opencode-session-memory-sidebar-installer"),
+    hasLockfile ? ["install", "--frozen-lockfile"] : ["install"],
+    installerDir,
   );
 }
 
@@ -93,6 +98,14 @@ function buildStandaloneInstaller(repoRootValue) {
     "bun",
     ["run", "build:standalone"],
     resolve(repoRootValue, "packaging/npm/opencode-session-memory-sidebar-installer"),
+  );
+}
+
+function verifyInstallerRelease(repoRootValue, installerTag) {
+  runCommand(
+    "node",
+    ["./scripts/verify-installer-release.mjs", "--repo-root", repoRootValue, "--tag", installerTag],
+    repoRootValue,
   );
 }
 
