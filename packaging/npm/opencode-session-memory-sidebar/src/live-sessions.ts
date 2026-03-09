@@ -19,6 +19,12 @@ export interface DiscoverLiveSessionsInput {
   readonly currentSessionId?: string;
 }
 
+export interface VisibleSessionSummary {
+  readonly storedSessionCount: number;
+  readonly liveSessionCount: number;
+  readonly currentSessionId?: string;
+}
+
 const INACTIVE_SESSION_STATUSES = new Set([
   "inactive",
   "closed",
@@ -46,6 +52,20 @@ export async function discoverLiveSessions(input: DiscoverLiveSessionsInput): Pr
     }));
 
   return stablePinCurrentFirst(liveRows);
+}
+
+export async function summarizeVisibleSessions(
+  input: DiscoverLiveSessionsInput,
+): Promise<VisibleSessionSummary> {
+  const sessions = normalizeSessionList(await listSessionsAcrossRuntime(input.sessionApi));
+  const currentSessionId = await resolveCurrentSessionId(input);
+  const liveSessionCount = sessions.filter((session) => isLiveStatus(session.status)).length;
+
+  return {
+    storedSessionCount: sessions.length,
+    liveSessionCount,
+    currentSessionId,
+  };
 }
 
 interface NormalizedSession {

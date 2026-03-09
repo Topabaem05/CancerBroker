@@ -1568,41 +1568,6 @@ function createOpencodeClient(config) {
   return new OpencodeClient({ client: client2 });
 }
 
-// src/capabilities.ts
-var DISABLED_REASON_MESSAGES = {
-  platform_unsupported: "Session Memory supports macOS only in v1 (platform_unsupported).",
-  session_api_unavailable: "Required OpenCode session APIs are unreachable in this runtime (session_api_unavailable)."
-};
-function probeRuntimeCapabilities(input = {}) {
-  const platform = input.platform ?? process.platform;
-  if (platform !== "darwin") {
-    return {
-      state: "disabled",
-      reason: "platform_unsupported",
-      message: DISABLED_REASON_MESSAGES.platform_unsupported
-    };
-  }
-  if (!hasUsableSessionApi(input.sessionApi)) {
-    return {
-      state: "disabled",
-      reason: "session_api_unavailable",
-      message: DISABLED_REASON_MESSAGES.session_api_unavailable
-    };
-  }
-  return {
-    state: "enabled",
-    platform: "darwin",
-    v1RamMetric: "rss_bytes"
-  };
-}
-function hasUsableSessionApi(sessionApi) {
-  if (!sessionApi || typeof sessionApi !== "object") {
-    return false;
-  }
-  const candidate = sessionApi;
-  return typeof candidate.list === "function" && typeof candidate.get === "function" && typeof candidate.messages === "function";
-}
-
 // src/live-sessions.ts
 var INACTIVE_SESSION_STATUSES = /* @__PURE__ */ new Set([
   "inactive",
@@ -1626,6 +1591,16 @@ async function discoverLiveSessions(input) {
     projectPath: session.projectPath
   }));
   return stablePinCurrentFirst(liveRows);
+}
+async function summarizeVisibleSessions(input) {
+  const sessions = normalizeSessionList(await listSessionsAcrossRuntime(input.sessionApi));
+  const currentSessionId = await resolveCurrentSessionId(input);
+  const liveSessionCount = sessions.filter((session) => isLiveStatus(session.status)).length;
+  return {
+    storedSessionCount: sessions.length,
+    liveSessionCount,
+    currentSessionId
+  };
 }
 function normalizeSessionList(raw) {
   const payload = unwrapSessionArray(raw);
@@ -1766,6 +1741,41 @@ function dedupeById(input) {
     output.push(session);
   }
   return output;
+}
+
+// src/capabilities.ts
+var DISABLED_REASON_MESSAGES = {
+  platform_unsupported: "Session Memory supports macOS only in v1 (platform_unsupported).",
+  session_api_unavailable: "Required OpenCode session APIs are unreachable in this runtime (session_api_unavailable)."
+};
+function probeRuntimeCapabilities(input = {}) {
+  const platform = input.platform ?? process.platform;
+  if (platform !== "darwin") {
+    return {
+      state: "disabled",
+      reason: "platform_unsupported",
+      message: DISABLED_REASON_MESSAGES.platform_unsupported
+    };
+  }
+  if (!hasUsableSessionApi(input.sessionApi)) {
+    return {
+      state: "disabled",
+      reason: "session_api_unavailable",
+      message: DISABLED_REASON_MESSAGES.session_api_unavailable
+    };
+  }
+  return {
+    state: "enabled",
+    platform: "darwin",
+    v1RamMetric: "rss_bytes"
+  };
+}
+function hasUsableSessionApi(sessionApi) {
+  if (!sessionApi || typeof sessionApi !== "object") {
+    return false;
+  }
+  const candidate = sessionApi;
+  return typeof candidate.list === "function" && typeof candidate.get === "function" && typeof candidate.messages === "function";
 }
 
 // src/process-macos.ts
@@ -2601,7 +2611,14 @@ function createSessionMemoryTool(options = {}) {
         sessionApi,
         currentSessionId: context.sessionID
       });
-      return formatSessionMemoryReport(buildSidebarPanelModel(snapshot));
+      const visibleSessions = await summarizeVisibleSessions({
+        sessionApi,
+        currentSessionId: context.sessionID
+      });
+      return formatSessionMemoryReport(buildSidebarPanelModel(snapshot), {
+        currentDirectory: context.directory,
+        storedSessionCount: visibleSessions.storedSessionCount
+      });
     }
   };
 }
@@ -2650,7 +2667,7 @@ function resolveSessionId(input) {
   }
   return void 0;
 }
-function formatSessionMemoryReport(model) {
+function formatSessionMemoryReport(model, options) {
   const items = buildSidebarItems(model);
   const lines = ["# Session Memory"];
   if (model.capability.state === "disabled") {
@@ -2662,6 +2679,7 @@ function formatSessionMemoryReport(model) {
   for (const item of items.filter((item2) => item2.id.startsWith("summary."))) {
     lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
   }
+  lines.push(`- Stored: ${options.storedSessionCount}`);
   if (model.current) {
     lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
   }
@@ -2669,6 +2687,19 @@ function formatSessionMemoryReport(model) {
     lines.push("Other live sessions:");
     for (const row of model.others) {
       lines.push(`- ${row.sessionId} | tokens ${row.tokensTotal} | RAM ${row.ramLabel}`);
+    }
+  }
+  if (model.summary.liveSessionCount === 0) {
+    lines.push("");
+    lines.push("Notes:");
+    if (options.currentDirectory) {
+      lines.push(`- Scope directory: ${options.currentDirectory}`);
+    }
+    lines.push("- This tool reports OpenCode sessions for the current project scope, not unrelated local processes like biome or tsserver.");
+    if (options.storedSessionCount > 0) {
+      lines.push("- Stored sessions exist, but none are currently live in this project scope. Reopen the session with `opencode -c` or `opencode -s <session-id>`.");
+    } else {
+      lines.push("- No stored sessions were found for the current project scope yet. Start or continue an OpenCode session in this directory first.");
     }
   }
   return lines.join("\n");
@@ -2690,5 +2721,6 @@ export {
   index_default as default,
   discoverLiveSessions,
   hasUsableSessionApi,
-  probeRuntimeCapabilities
+  probeRuntimeCapabilities,
+  summarizeVisibleSessions
 };

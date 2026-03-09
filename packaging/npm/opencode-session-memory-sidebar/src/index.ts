@@ -1,7 +1,7 @@
 import { createOpencodeClient } from "@opencode-ai/sdk";
 
 import type { RuntimeCapabilityProbeInput } from "./capabilities";
-import type { SessionApiLike } from "./live-sessions";
+import { summarizeVisibleSessions, type SessionApiLike } from "./live-sessions";
 import { buildSessionMemorySnapshot, buildSidebarItems, buildSidebarPanelModel } from "./sidebar";
 
 const DEFAULT_SERVER_URL = process.env.OPENCODE_SERVER_URL || "http://localhost:4096";
@@ -33,8 +33,15 @@ export function createSessionMemoryTool(options: CreateSessionMemoryToolOptions 
         sessionApi,
         currentSessionId: context.sessionID,
       });
+      const visibleSessions = await summarizeVisibleSessions({
+        sessionApi,
+        currentSessionId: context.sessionID,
+      });
 
-      return formatSessionMemoryReport(buildSidebarPanelModel(snapshot));
+      return formatSessionMemoryReport(buildSidebarPanelModel(snapshot), {
+        currentDirectory: context.directory,
+        storedSessionCount: visibleSessions.storedSessionCount,
+      });
     },
   };
 }
@@ -99,7 +106,13 @@ function resolveSessionId(input: unknown): string | undefined {
   return undefined;
 }
 
-function formatSessionMemoryReport(model: ReturnType<typeof buildSidebarPanelModel>): string {
+function formatSessionMemoryReport(
+  model: ReturnType<typeof buildSidebarPanelModel>,
+  options: {
+    readonly currentDirectory?: string;
+    readonly storedSessionCount: number;
+  },
+): string {
   const items = buildSidebarItems(model);
   const lines = ["# Session Memory"];
 
@@ -113,6 +126,7 @@ function formatSessionMemoryReport(model: ReturnType<typeof buildSidebarPanelMod
   for (const item of items.filter((item) => item.id.startsWith("summary."))) {
     lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
   }
+  lines.push(`- Stored: ${options.storedSessionCount}`);
 
   if (model.current) {
     lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
@@ -122,6 +136,20 @@ function formatSessionMemoryReport(model: ReturnType<typeof buildSidebarPanelMod
     lines.push("Other live sessions:");
     for (const row of model.others) {
       lines.push(`- ${row.sessionId} | tokens ${row.tokensTotal} | RAM ${row.ramLabel}`);
+    }
+  }
+
+  if (model.summary.liveSessionCount === 0) {
+    lines.push("");
+    lines.push("Notes:");
+    if (options.currentDirectory) {
+      lines.push(`- Scope directory: ${options.currentDirectory}`);
+    }
+    lines.push("- This tool reports OpenCode sessions for the current project scope, not unrelated local processes like biome or tsserver.");
+    if (options.storedSessionCount > 0) {
+      lines.push("- Stored sessions exist, but none are currently live in this project scope. Reopen the session with `opencode -c` or `opencode -s <session-id>`.");
+    } else {
+      lines.push("- No stored sessions were found for the current project scope yet. Start or continue an OpenCode session in this directory first.");
     }
   }
 

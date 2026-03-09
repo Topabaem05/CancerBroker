@@ -27,5 +27,28 @@ test("builds a supported session_memory tool report", async () => {
 
   expect(output).toContain("# Session Memory");
   expect(output).toContain("Summary:");
+  expect(output).toContain("Stored: 1");
   expect(output).toContain("Current: session-1");
+});
+
+test("explains project-scoped empty results when no live sessions exist", async () => {
+  const sessionMemoryTool = createSessionMemoryTool({
+    platform: "darwin",
+    sessionApi: {
+      list: async () => [{ id: "session-9", status: "completed" }],
+      get: async () => ({ id: "session-9" }),
+      messages: async () => [],
+    },
+  });
+
+  const output = await sessionMemoryTool.execute({}, {
+    sessionID: "session-9",
+    directory: "/Users/guribbong/code/testest",
+  });
+
+  expect(output).toContain("Stored: 1");
+  expect(output).toContain("Live: 0");
+  expect(output).toContain("Scope directory: /Users/guribbong/code/testest");
+  expect(output).toContain("not unrelated local processes like biome or tsserver");
+  expect(output).toContain("Stored sessions exist, but none are currently live");
 });
