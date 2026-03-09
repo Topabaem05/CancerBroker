@@ -4,18 +4,6 @@
 
 Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 
-## Scope
-
-- v1 platform support: macOS + Linux
-- default mode: observe-only
-- conservative cleanup only for allowlisted session artifacts
-
-## Non-goals (v1)
-
-- Windows support
-- remote control APIs
-- broad project-directory cleanup
-
 ## Quick Start
 
 ```bash
