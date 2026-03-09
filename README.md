@@ -2,6 +2,12 @@
 
 Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 
+## README by Language
+
+[Language Index](readme-pages/index.md) | [English](readme-pages/english.md) | [中文](readme-pages/chinese.md) | [Español](readme-pages/spanish.md) | [한국어](readme-pages/korean.md) | [日本語](readme-pages/japanese.md)
+
+The Korean docs also include a separate plugin guide page.
+
 ## Scope
 
 - v1 platform support: macOS + Linux
@@ -19,17 +25,6 @@ Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 ```bash
 cargo run -- --config fixtures/config/observe-only.toml status --json
 ```
-
-## README by Language
-
-- [Language Index](readme-pages/index.md)
-- [English](readme-pages/english.md)
-- [中文](readme-pages/chinese.md)
-- [Español](readme-pages/spanish.md)
-- [한국어](readme-pages/korean.md)
-- [日本語](readme-pages/japanese.md)
-
-The Korean docs also include a separate plugin guide page.
 
 ## Verification
 
