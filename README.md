@@ -1,4 +1,4 @@
-# opencode-guardian
+# CancerBroker
 
 Rust sidecar watchdog for `opencode` and `oh-my-openagent`.
 

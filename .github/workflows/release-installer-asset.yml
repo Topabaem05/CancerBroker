@@ -3,7 +3,7 @@ name: release-installer-asset
 on:
   push:
     tags:
-      - "opencode-session-memory-sidebar-installer-v*"
+      - "CancerBroker-v*"
   workflow_dispatch:
     inputs:
       tag:

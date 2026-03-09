@@ -59,7 +59,7 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 Current versioned release asset URL:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/opencode-session-memory-sidebar-installer-v0.1.0/opencode-session-memory-sidebar-installer.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.0/opencode-session-memory-sidebar-installer.cjs
 ```
 
 ## Publish Order
@@ -117,7 +117,7 @@ That command updates the installer package version, rebuilds the standalone asse
 1. Run `node ./scripts/prepare-installer-release.mjs <version>`
 2. Review changes and push `main`
 3. Run the `npm-publish` workflow with `confirm=publish` if the installer package itself should be published to npm
-4. Push tag `opencode-session-memory-sidebar-installer-v<version>` or run `.github/workflows/release-installer-asset.yml`
+4. Push tag `CancerBroker-v<version>` or run `.github/workflows/release-installer-asset.yml`
 5. Test clone-free public install with:
 
    ```bash

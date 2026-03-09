@@ -20,7 +20,7 @@ if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
 }
 
 const repoRoot = resolveRepoRoot(args.slice(1));
-const installerTag = `opencode-session-memory-sidebar-installer-v${version}`;
+const installerTag = `CancerBroker-v${version}`;
 const releaseAssetUrl = `https://github.com/Topabaem05/CancerBroker/releases/download/${installerTag}/opencode-session-memory-sidebar-installer.cjs`;
 
 const installerPackageJsonPath = resolve(repoRoot, "packaging/npm/opencode-session-memory-sidebar-installer/package.json");
@@ -113,7 +113,7 @@ function updateFormula(filePath, versionValue, assetUrl, digest) {
 function replaceReleaseAssetUrls(filePath, assetUrl) {
   const content = readFileSync(filePath, "utf8");
   const updated = content.replace(
-    /https:\/\/github\.com\/Topabaem05\/CancerBroker\/releases\/download\/opencode-session-memory-sidebar-installer-v[^\s)`]+\/opencode-session-memory-sidebar-installer\.cjs/g,
+    /https:\/\/github\.com\/Topabaem05\/CancerBroker\/releases\/download\/CancerBroker-v[^\s)`]+\/opencode-session-memory-sidebar-installer\.cjs/g,
     assetUrl,
   );
   writeFileSync(filePath, updated);
