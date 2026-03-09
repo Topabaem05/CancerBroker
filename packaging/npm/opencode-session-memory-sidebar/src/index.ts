@@ -2,6 +2,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk";
 
 import type { RuntimeCapabilityProbeInput } from "./capabilities";
 import { summarizeVisibleSessions, type SessionApiLike } from "./live-sessions";
+import { collectOpencodeHelperSummary, type OpencodeHelperSummary } from "./opencode-helpers";
 import { buildSessionMemorySnapshot, buildSidebarItems, buildSidebarPanelModel } from "./sidebar";
 
 const DEFAULT_SERVER_URL = process.env.OPENCODE_SERVER_URL || "http://localhost:4096";
@@ -15,6 +16,8 @@ export interface CreateSessionMemoryToolOptions {
   readonly platform?: string;
   readonly sessionApi?: SessionApiLike;
   readonly serverUrl?: string;
+  readonly helperSummary?: OpencodeHelperSummary;
+  readonly helperSummaryLoader?: () => Promise<OpencodeHelperSummary>;
 }
 
 export function createSessionMemoryTool(options: CreateSessionMemoryToolOptions = {}) {
@@ -37,10 +40,13 @@ export function createSessionMemoryTool(options: CreateSessionMemoryToolOptions 
         sessionApi,
         currentSessionId: context.sessionID,
       });
+      const helperSummary =
+        options.helperSummary ?? (options.helperSummaryLoader ? await options.helperSummaryLoader() : await collectOpencodeHelperSummary());
 
       return formatSessionMemoryReport(buildSidebarPanelModel(snapshot), {
         currentDirectory: context.directory,
         storedSessionCount: visibleSessions.storedSessionCount,
+        helperSummary,
       });
     },
   };
@@ -111,6 +117,7 @@ function formatSessionMemoryReport(
   options: {
     readonly currentDirectory?: string;
     readonly storedSessionCount: number;
+    readonly helperSummary: OpencodeHelperSummary;
   },
 ): string {
   const items = buildSidebarItems(model);
@@ -127,6 +134,9 @@ function formatSessionMemoryReport(
     lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
   }
   lines.push(`- Stored: ${options.storedSessionCount}`);
+  lines.push(`- Opencode Helpers: ${options.helperSummary.activeCount}`);
+  lines.push(`- Helper RAM: ${formatBytes(options.helperSummary.activeTotalBytes)}`);
+  lines.push(`- Helper Cleanup: killed ${options.helperSummary.cleanupKilledCount}, skipped ${options.helperSummary.cleanupSkippedCount}`);
 
   if (model.current) {
     lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
@@ -139,13 +149,24 @@ function formatSessionMemoryReport(
     }
   }
 
+  if (options.helperSummary.activeRows.length > 0) {
+    lines.push("");
+    lines.push("Opencode-owned helper processes:");
+    for (const row of options.helperSummary.activeRows) {
+      lines.push(`- ${row.label} | pid ${row.pid} | RAM ${formatBytes(row.rssBytes)} | age ${formatElapsedSeconds(row.elapsedSeconds)}`);
+    }
+  }
+
   if (model.summary.liveSessionCount === 0) {
     lines.push("");
     lines.push("Notes:");
     if (options.currentDirectory) {
       lines.push(`- Scope directory: ${options.currentDirectory}`);
     }
-    lines.push("- This tool reports OpenCode sessions for the current project scope, not unrelated local processes like biome or tsserver.");
+    lines.push("- This tool reports OpenCode sessions for the current project scope, plus Opencode-owned helper processes. It does not report unrelated local processes outside Opencode ownership.");
+    if (options.helperSummary.activeCount > 0) {
+      lines.push("- Opencode-owned helper processes are active, but they are not a substitute for live session records in the current project scope.");
+    }
     if (options.storedSessionCount > 0) {
       lines.push("- Stored sessions exist, but none are currently live in this project scope. Reopen the session with `opencode -c` or `opencode -s <session-id>`.");
     } else {
@@ -156,8 +177,40 @@ function formatSessionMemoryReport(
   return lines.join("\n");
 }
 
+function formatElapsedSeconds(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${remainingSeconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
 export * from "./capabilities";
 export * from "./live-sessions";
+export * from "./opencode-helpers";
 export * from "./sidebar";
 export * from "./token-usage";
 export * from "./types";

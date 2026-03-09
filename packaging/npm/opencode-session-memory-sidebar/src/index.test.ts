@@ -49,6 +49,6 @@ test("explains project-scoped empty results when no live sessions exist", async 
   expect(output).toContain("Stored: 1");
   expect(output).toContain("Live: 0");
   expect(output).toContain("Scope directory: /Users/guribbong/code/testest");
-  expect(output).toContain("not unrelated local processes like biome or tsserver");
+  expect(output).toContain("does not report unrelated local processes outside Opencode ownership");
   expect(output).toContain("Stored sessions exist, but none are currently live");
 });
