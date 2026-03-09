@@ -1743,6 +1743,243 @@ function dedupeById(input) {
   return output;
 }
 
+// src/opencode-helpers.ts
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+var execFileAsync = promisify(execFile);
+var DEFAULT_HELPER_STALE_THRESHOLD_SECONDS = 30;
+var MAX_HELPER_SUMMARY_ROWS = 5;
+async function collectOpencodeHelperSummary(input = {}) {
+  const currentPid = input.currentPid ?? process.pid;
+  const sampleProcesses = input.sampleProcesses ?? sampleMacOsProcesses;
+  const records = await sampleProcesses();
+  const root = resolveCurrentOpencodeRoot(records, currentPid);
+  if (!root) {
+    return {
+      activeCount: 0,
+      activeTotalBytes: 0,
+      activeRows: [],
+      cleanupKilledCount: 0,
+      cleanupSkippedCount: 0
+    };
+  }
+  const activeHelpers = records.filter(
+    (record) => record.pid !== root.pid && isTrackedHelperProcess(record) && belongsToOpencodeRoot(records, record, root)
+  );
+  const cleanupCandidates = collectCleanupCandidates(activeHelpers, {
+    staleThresholdSeconds: input.staleThresholdSeconds ?? DEFAULT_HELPER_STALE_THRESHOLD_SECONDS
+  });
+  const cleanupResult = cleanupProcesses(cleanupCandidates, {
+    signalProcess: input.signalProcess,
+    isProcessAlive: input.isProcessAlive
+  });
+  const activeRows = [...activeHelpers].sort((left, right) => right.rssBytes - left.rssBytes).slice(0, MAX_HELPER_SUMMARY_ROWS).map((record) => ({
+    pid: record.pid,
+    ppid: record.ppid,
+    pgid: record.pgid,
+    elapsedSeconds: record.elapsedSeconds,
+    rssBytes: record.rssBytes,
+    label: describeHelper(record)
+  }));
+  return {
+    activeCount: activeHelpers.length,
+    activeTotalBytes: activeHelpers.reduce((sum, record) => sum + record.rssBytes, 0),
+    activeRows,
+    cleanupKilledCount: cleanupResult.killedCount,
+    cleanupSkippedCount: cleanupResult.skippedCount
+  };
+}
+async function sampleMacOsProcesses() {
+  const { stdout } = await execFileAsync(
+    "ps",
+    ["-Ao", "pid=,ppid=,pgid=,state=,etime=,rss=,comm=,args="],
+    {
+      encoding: "utf8",
+      timeout: 2e3,
+      maxBuffer: 512 * 1024,
+      env: {
+        ...process.env,
+        LC_ALL: "C",
+        LANG: "C"
+      }
+    }
+  ).catch((error) => {
+    throw normalizeExecError(error);
+  });
+  return stdout.split(/\r?\n/).map((line) => parseProcessRow(line)).filter((row) => row !== null);
+}
+function parseProcessRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const match = /^([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+)\s+([0-9]+)\s+(\S+)\s+(.+)$/.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+  const pid = Number.parseInt(match[1], 10);
+  const ppid = Number.parseInt(match[2], 10);
+  const pgid = Number.parseInt(match[3], 10);
+  const state = match[4];
+  const elapsedSeconds = parseElapsedSeconds(match[5]);
+  const rssKib = Number.parseInt(match[6], 10);
+  const command = match[7];
+  const args = match[8];
+  if (!Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid) || !Number.isInteger(elapsedSeconds) || !Number.isInteger(rssKib)) {
+    return null;
+  }
+  return {
+    pid,
+    ppid,
+    pgid,
+    state,
+    elapsedSeconds,
+    rssBytes: rssKib * 1024,
+    command,
+    args
+  };
+}
+function parseElapsedSeconds(value) {
+  const daySplit = value.split("-");
+  const days = daySplit.length === 2 ? Number.parseInt(daySplit[0], 10) : 0;
+  const timePart = daySplit.length === 2 ? daySplit[1] : daySplit[0];
+  const units = timePart.split(":").map((part) => Number.parseInt(part, 10));
+  if (units.some((part) => !Number.isInteger(part) || part < 0) || !Number.isInteger(days) || days < 0) {
+    return 0;
+  }
+  if (units.length === 2) {
+    return days * 86400 + units[0] * 60 + units[1];
+  }
+  if (units.length === 3) {
+    return days * 86400 + units[0] * 3600 + units[1] * 60 + units[2];
+  }
+  return 0;
+}
+function resolveCurrentOpencodeRoot(records, currentPid) {
+  const byPid = new Map(records.map((record) => [record.pid, record]));
+  const visited = /* @__PURE__ */ new Set();
+  let pid = currentPid;
+  while (pid && !visited.has(pid)) {
+    visited.add(pid);
+    const record = byPid.get(pid);
+    if (!record) {
+      break;
+    }
+    if (isOpencodeProcess(record)) {
+      return record;
+    }
+    pid = record.ppid;
+  }
+  return null;
+}
+function belongsToOpencodeRoot(records, record, root) {
+  if (record.pgid === root.pgid) {
+    return true;
+  }
+  const byPid = new Map(records.map((row) => [row.pid, row]));
+  const visited = /* @__PURE__ */ new Set();
+  let pid = record.ppid;
+  while (pid && !visited.has(pid)) {
+    visited.add(pid);
+    if (pid === root.pid) {
+      return true;
+    }
+    const parent = byPid.get(pid);
+    if (!parent) {
+      break;
+    }
+    pid = parent.ppid;
+  }
+  return false;
+}
+function isOpencodeProcess(record) {
+  return basename(record.command) === "opencode" || record.args.startsWith("opencode ") || record.args === "opencode";
+}
+function isTrackedHelperProcess(record) {
+  const combined = `${record.command} ${record.args}`.toLowerCase();
+  const commandBase = basename(record.command);
+  return commandBase === "node" || commandBase === "biome" || combined.includes("typescript-language-server") || combined.includes("tsserver.js") || combined.includes("typingsinstaller.js") || combined.includes("biome lsp-proxy") || combined.includes("context7-mcp") || combined.includes("tokscale");
+}
+function collectCleanupCandidates(records, input) {
+  const bySignature = /* @__PURE__ */ new Map();
+  for (const record of records) {
+    const signature = `${basename(record.command)}|${record.args}`;
+    const list = bySignature.get(signature) ?? [];
+    list.push(record);
+    bySignature.set(signature, list);
+  }
+  const candidates = [];
+  for (const group of bySignature.values()) {
+    if (group.length < 2) {
+      continue;
+    }
+    const ordered = [...group].sort((left, right) => left.elapsedSeconds - right.elapsedSeconds);
+    const survivors = ordered.slice(0, 1);
+    const stale = ordered.slice(survivors.length).filter((record) => record.elapsedSeconds >= input.staleThresholdSeconds);
+    candidates.push(...stale.filter((record) => !record.state.startsWith("Z")));
+  }
+  return candidates;
+}
+function cleanupProcesses(records, input) {
+  const signalProcess = input.signalProcess ?? process.kill.bind(process);
+  const isProcessAlive = input.isProcessAlive ?? ((pid) => isAlive(pid));
+  let killedCount = 0;
+  let skippedCount = 0;
+  for (const record of records) {
+    try {
+      signalProcess(record.pid, "SIGTERM");
+      if (isProcessAlive(record.pid)) {
+        signalProcess(record.pid, "SIGKILL");
+      }
+      killedCount += 1;
+    } catch {
+      skippedCount += 1;
+    }
+  }
+  return { killedCount, skippedCount };
+}
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function describeHelper(record) {
+  const combined = record.args.toLowerCase();
+  if (combined.includes("typescript-language-server")) {
+    return "typescript-language-server";
+  }
+  if (combined.includes("tsserver.js")) {
+    return "tsserver";
+  }
+  if (combined.includes("typingsinstaller.js")) {
+    return "typingsInstaller";
+  }
+  if (combined.includes("biome")) {
+    return "biome";
+  }
+  if (combined.includes("context7-mcp")) {
+    return "context7-mcp";
+  }
+  if (combined.includes("tokscale")) {
+    return "tokscale";
+  }
+  return basename(record.command);
+}
+function basename(value) {
+  const normalized = value.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || normalized;
+}
+function normalizeExecError(error) {
+  const failure = error;
+  const stderr = failure.stderr ? String(failure.stderr) : "";
+  const message = stderr.trim() || failure.message || "Unable to inspect macOS process tree";
+  return new Error(message);
+}
+
 // src/capabilities.ts
 var DISABLED_REASON_MESSAGES = {
   platform_unsupported: "Session Memory supports macOS only in v1 (platform_unsupported).",
@@ -1779,9 +2016,9 @@ function hasUsableSessionApi(sessionApi) {
 }
 
 // src/process-macos.ts
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-var execFileAsync = promisify(execFile);
+import { execFile as execFile2 } from "node:child_process";
+import { promisify as promisify2 } from "node:util";
+var execFileAsync2 = promisify2(execFile2);
 var DEFAULT_PROCESS_SAMPLE_TIMEOUT_MS = 1e3;
 var MAX_PROCESS_SAMPLE_TIMEOUT_MS = 5e3;
 var PS_SAMPLE_PATTERN = /^\s*(\d+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(\d+)\s*$/;
@@ -1870,7 +2107,7 @@ async function sampleMacOsProcess(input) {
 }
 async function runPsCommandWithExecFile(pid, timeoutMs) {
   try {
-    const { stdout, stderr } = await execFileAsync(
+    const { stdout, stderr } = await execFileAsync2(
       "ps",
       ["-o", "pid=", "-o", "lstart=", "-o", "rss=", "-p", String(pid)],
       {
@@ -2615,9 +2852,11 @@ function createSessionMemoryTool(options = {}) {
         sessionApi,
         currentSessionId: context.sessionID
       });
+      const helperSummary = options.helperSummary ?? (options.helperSummaryLoader ? await options.helperSummaryLoader() : await collectOpencodeHelperSummary());
       return formatSessionMemoryReport(buildSidebarPanelModel(snapshot), {
         currentDirectory: context.directory,
-        storedSessionCount: visibleSessions.storedSessionCount
+        storedSessionCount: visibleSessions.storedSessionCount,
+        helperSummary
       });
     }
   };
@@ -2680,6 +2919,9 @@ function formatSessionMemoryReport(model, options) {
     lines.push(`- ${item.label}: ${item.value ?? ""}`.trim());
   }
   lines.push(`- Stored: ${options.storedSessionCount}`);
+  lines.push(`- Opencode Helpers: ${options.helperSummary.activeCount}`);
+  lines.push(`- Helper RAM: ${formatBytes2(options.helperSummary.activeTotalBytes)}`);
+  lines.push(`- Helper Cleanup: killed ${options.helperSummary.cleanupKilledCount}, skipped ${options.helperSummary.cleanupSkippedCount}`);
   if (model.current) {
     lines.push(`Current: ${model.current.sessionId} | tokens ${model.current.tokensTotal} | RAM ${model.current.ramLabel}`);
   }
@@ -2689,13 +2931,23 @@ function formatSessionMemoryReport(model, options) {
       lines.push(`- ${row.sessionId} | tokens ${row.tokensTotal} | RAM ${row.ramLabel}`);
     }
   }
+  if (options.helperSummary.activeRows.length > 0) {
+    lines.push("");
+    lines.push("Opencode-owned helper processes:");
+    for (const row of options.helperSummary.activeRows) {
+      lines.push(`- ${row.label} | pid ${row.pid} | RAM ${formatBytes2(row.rssBytes)} | age ${formatElapsedSeconds(row.elapsedSeconds)}`);
+    }
+  }
   if (model.summary.liveSessionCount === 0) {
     lines.push("");
     lines.push("Notes:");
     if (options.currentDirectory) {
       lines.push(`- Scope directory: ${options.currentDirectory}`);
     }
-    lines.push("- This tool reports OpenCode sessions for the current project scope, not unrelated local processes like biome or tsserver.");
+    lines.push("- This tool reports OpenCode sessions for the current project scope, plus Opencode-owned helper processes. It does not report unrelated local processes outside Opencode ownership.");
+    if (options.helperSummary.activeCount > 0) {
+      lines.push("- Opencode-owned helper processes are active, but they are not a substitute for live session records in the current project scope.");
+    }
     if (options.storedSessionCount > 0) {
       lines.push("- Stored sessions exist, but none are currently live in this project scope. Reopen the session with `opencode -c` or `opencode -s <session-id>`.");
     } else {
@@ -2703,6 +2955,32 @@ function formatSessionMemoryReport(model, options) {
     }
   }
   return lines.join("\n");
+}
+function formatElapsedSeconds(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${remainingSeconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+}
+function formatBytes2(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 export {
   DISABLED_REASON_MESSAGES,
@@ -2714,6 +2992,7 @@ export {
   buildSessionMemorySnapshot,
   buildSidebarItems,
   buildSidebarPanelModel,
+  collectOpencodeHelperSummary,
   collectSessionMemoryRows,
   createRamState,
   createSessionMemorySidebarDefinition,
@@ -2721,6 +3000,9 @@ export {
   index_default as default,
   discoverLiveSessions,
   hasUsableSessionApi,
+  parseElapsedSeconds,
+  parseProcessRow,
   probeRuntimeCapabilities,
+  sampleMacOsProcesses,
   summarizeVisibleSessions
 };
