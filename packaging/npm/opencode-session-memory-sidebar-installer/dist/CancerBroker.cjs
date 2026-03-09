@@ -264,29 +264,6 @@ function resolvePluginDirectory(options = {}) {
 function resolvePluginFilePath(options = {}) {
   return (0, import_node_path2.join)(resolvePluginDirectory(options), DEFAULT_PLUGIN_ASSET_NAME);
 }
-async function installLocalPlugin(options = {}) {
-  const pluginUrl = options.pluginUrl || DEFAULT_PLUGIN_URL;
-  const pluginFilePath = resolvePluginFilePath(options);
-  const nextText = await downloadPluginAsset(pluginUrl);
-  (0, import_node_fs2.mkdirSync)(resolvePluginDirectory(options), { recursive: true });
-  const currentText = (0, import_node_fs2.existsSync)(pluginFilePath) ? (0, import_node_fs2.readFileSync)(pluginFilePath, "utf8") : null;
-  if (currentText === nextText) {
-    return {
-      changed: false,
-      pluginFilePath,
-      pluginUrl,
-      backupPath: null
-    };
-  }
-  const backupPath = currentText === null ? null : backupExistingFile(pluginFilePath, currentText);
-  (0, import_node_fs2.writeFileSync)(pluginFilePath, ensureTrailingEol2(nextText), "utf8");
-  return {
-    changed: true,
-    pluginFilePath,
-    pluginUrl,
-    backupPath
-  };
-}
 function uninstallLocalPlugin(options = {}) {
   const pluginFilePath = resolvePluginFilePath(options);
   if (!(0, import_node_fs2.existsSync)(pluginFilePath)) {
@@ -304,22 +281,88 @@ function uninstallLocalPlugin(options = {}) {
     backupPath
   };
 }
-async function downloadPluginAsset(pluginUrl) {
-  if (pluginUrl.startsWith("file://")) {
-    return (0, import_node_fs2.readFileSync)(new URL(pluginUrl), "utf8");
-  }
-  if (pluginUrl.startsWith("/") && (0, import_node_fs2.existsSync)(pluginUrl)) {
-    return (0, import_node_fs2.readFileSync)(pluginUrl, "utf8");
-  }
-  const response = await fetch(pluginUrl);
-  if (!response.ok) {
-    throw new Error(`Unable to download plugin asset from ${pluginUrl}: HTTP ${response.status}`);
-  }
-  return await response.text();
-}
 function backupExistingFile(filePath, originalText) {
   const backupPath = `${filePath}.bak.${Date.now()}`;
   (0, import_node_fs2.writeFileSync)(backupPath, originalText, "utf8");
+  return backupPath;
+}
+
+// bin/tool-file.mjs
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
+var import_node_os3 = require("node:os");
+var DEFAULT_TOOL_ASSET_NAME = "session_memory.js";
+var DEFAULT_TOOL_URL = process.env.OPENCODE_SESSION_MEMORY_TOOL_URL || `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_TOOL_ASSET_NAME}`;
+function resolveToolDirectory(options = {}) {
+  if (options.configPath) {
+    return (0, import_node_path3.join)((0, import_node_path3.dirname)(options.configPath), "tools");
+  }
+  if (options.project) {
+    return (0, import_node_path3.join)(process.cwd(), ".opencode", "tools");
+  }
+  const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path3.join)((0, import_node_os3.homedir)(), ".config", "opencode");
+  return (0, import_node_path3.join)(configDir, "tools");
+}
+function resolveToolFilePath(options = {}) {
+  return (0, import_node_path3.join)(resolveToolDirectory(options), DEFAULT_TOOL_ASSET_NAME);
+}
+async function installLocalTool(options = {}) {
+  const toolUrl = options.toolUrl || DEFAULT_TOOL_URL;
+  const toolFilePath = resolveToolFilePath(options);
+  const nextText = await downloadToolAsset(toolUrl);
+  (0, import_node_fs3.mkdirSync)(resolveToolDirectory(options), { recursive: true });
+  const currentText = (0, import_node_fs3.existsSync)(toolFilePath) ? (0, import_node_fs3.readFileSync)(toolFilePath, "utf8") : null;
+  if (currentText === nextText) {
+    return {
+      changed: false,
+      toolFilePath,
+      toolUrl,
+      backupPath: null
+    };
+  }
+  const backupPath = currentText === null ? null : backupExistingFile2(toolFilePath, currentText);
+  (0, import_node_fs3.writeFileSync)(toolFilePath, ensureTrailingEol2(nextText), "utf8");
+  return {
+    changed: true,
+    toolFilePath,
+    toolUrl,
+    backupPath
+  };
+}
+function uninstallLocalTool(options = {}) {
+  const toolFilePath = resolveToolFilePath(options);
+  if (!(0, import_node_fs3.existsSync)(toolFilePath)) {
+    return {
+      changed: false,
+      toolFilePath,
+      backupPath: null
+    };
+  }
+  const originalText = (0, import_node_fs3.readFileSync)(toolFilePath, "utf8");
+  const backupPath = backupExistingFile2(toolFilePath, originalText);
+  (0, import_node_fs3.rmSync)(toolFilePath, { force: true });
+  return {
+    changed: true,
+    toolFilePath,
+    backupPath
+  };
+}
+async function downloadToolAsset(toolUrl) {
+  if (toolUrl.startsWith("file://")) {
+    return (0, import_node_fs3.readFileSync)(new URL(toolUrl), "utf8");
+  }
+  if (toolUrl.startsWith("/") && (0, import_node_fs3.existsSync)(toolUrl)) {
+    return (0, import_node_fs3.readFileSync)(toolUrl, "utf8");
+  }
+  const response = await fetch(toolUrl);
+  if (!response.ok) {
+    throw new Error(`Unable to download tool asset from ${toolUrl}: HTTP ${response.status}`);
+  }
+  return await response.text();
+}
+function backupExistingFile2(filePath, originalText) {
+  const backupPath = `${filePath}.bak.${Date.now()}`;
+  (0, import_node_fs3.writeFileSync)(backupPath, originalText, "utf8");
   return backupPath;
 }
 function ensureTrailingEol2(text) {
@@ -352,14 +395,21 @@ async function main(argv) {
       console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
       return;
     }
-    const fileResult2 = uninstallLocalPlugin(flags);
-    if (fileResult2.changed) {
-      console.log(`[opencode-session-memory-sidebar] Removed local plugin at ${fileResult2.pluginFilePath}`);
-      if (fileResult2.backupPath) {
-        console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult2.backupPath}`);
+    const toolResult2 = uninstallLocalTool(flags);
+    if (toolResult2.changed) {
+      console.log(`[opencode-session-memory-sidebar] Removed local tool at ${toolResult2.toolFilePath}`);
+      if (toolResult2.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${toolResult2.backupPath}`);
       }
     } else {
-      console.log(`[opencode-session-memory-sidebar] Local plugin not present at ${fileResult2.pluginFilePath}`);
+      console.log(`[opencode-session-memory-sidebar] Local tool not present at ${toolResult2.toolFilePath}`);
+    }
+    const legacyPluginCleanup2 = uninstallLocalPlugin(flags);
+    if (legacyPluginCleanup2.changed) {
+      console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup2.pluginFilePath}`);
+      if (legacyPluginCleanup2.backupPath) {
+        console.log(`[opencode-session-memory-sidebar] Backup: ${legacyPluginCleanup2.backupPath}`);
+      }
     }
     const cleanupResult2 = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
     if (cleanupResult2.changed) {
@@ -386,14 +436,21 @@ async function main(argv) {
     console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
     return;
   }
-  const fileResult = await installLocalPlugin(flags);
-  if (fileResult.changed) {
-    console.log(`[opencode-session-memory-sidebar] Installed local plugin at ${fileResult.pluginFilePath}`);
-    if (fileResult.backupPath) {
-      console.log(`[opencode-session-memory-sidebar] Backup: ${fileResult.backupPath}`);
+  const toolResult = await installLocalTool(flags);
+  if (toolResult.changed) {
+    console.log(`[opencode-session-memory-sidebar] Installed local tool at ${toolResult.toolFilePath}`);
+    if (toolResult.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${toolResult.backupPath}`);
     }
   } else {
-    console.log(`[opencode-session-memory-sidebar] Local plugin already up to date at ${fileResult.pluginFilePath}`);
+    console.log(`[opencode-session-memory-sidebar] Local tool already up to date at ${toolResult.toolFilePath}`);
+  }
+  const legacyPluginCleanup = uninstallLocalPlugin(flags);
+  if (legacyPluginCleanup.changed) {
+    console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup.pluginFilePath}`);
+    if (legacyPluginCleanup.backupPath) {
+      console.log(`[opencode-session-memory-sidebar] Backup: ${legacyPluginCleanup.backupPath}`);
+    }
   }
   const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
   if (cleanupResult.changed) {
@@ -402,7 +459,7 @@ async function main(argv) {
       console.log(`[opencode-session-memory-sidebar] Backup: ${cleanupResult.backupPath}`);
     }
   }
-  console.log(`[opencode-session-memory-sidebar] Plugin asset: ${fileResult.pluginUrl}`);
+  console.log(`[opencode-session-memory-sidebar] Tool asset: ${toolResult.toolUrl}`);
   console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
 }
 function parseFlags(argv) {

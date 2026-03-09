@@ -69,7 +69,7 @@ brew uninstall opencode-session-memory-sidebar-installer
 - 현재 버전 고정 release asset URL:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.4/CancerBroker.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.5/CancerBroker.cjs
 ```
 
 - npm package 방식으로 강제 등록하고 싶다면 `--package`를 명시합니다:
