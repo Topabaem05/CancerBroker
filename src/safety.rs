@@ -7,9 +7,11 @@ use thiserror::Error;
 pub struct ProcessIdentity {
     pub pid: u32,
     pub parent_pid: Option<u32>,
+    pub pgid: Option<u32>,
     pub start_time_secs: u64,
     pub uid: Option<u32>,
     pub command: String,
+    pub listening_ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,18 +99,20 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        OwnershipPolicy, ProcessIdentity, SafetyDecision, allowlist_contains_path,
-        canonicalize_policy_path, command_matches_policy, is_path_allowlisted,
-        validate_process_identity,
+        allowlist_contains_path, canonicalize_policy_path, command_matches_policy,
+        is_path_allowlisted, validate_process_identity, OwnershipPolicy, ProcessIdentity,
+        SafetyDecision,
     };
 
     fn sample_identity() -> ProcessIdentity {
         ProcessIdentity {
             pid: 1,
             parent_pid: None,
+            pgid: Some(1),
             start_time_secs: 0,
             uid: Some(1000),
             command: "opencode worker".to_string(),
+            listening_ports: vec![],
         }
     }
 

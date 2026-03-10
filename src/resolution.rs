@@ -10,9 +10,11 @@ fn build_process_identity(sample: &crate::monitor::process::ProcessSample) -> Pr
     ProcessIdentity {
         pid: sample.pid,
         parent_pid: sample.parent_pid,
+        pgid: sample.pgid,
         start_time_secs: sample.start_time_secs,
         uid: sample.uid,
         command: sample.command.clone(),
+        listening_ports: sample.listening_ports.clone(),
     }
 }
 
@@ -146,8 +148,8 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use super::{
-        CandidateResolver, SessionArtifactIndex, SessionProcessIndex, accepts_completion_event,
-        build_resolved_candidates, session_ids_in_text,
+        accepts_completion_event, build_resolved_candidates, session_ids_in_text,
+        CandidateResolver, SessionArtifactIndex, SessionProcessIndex,
     };
     use crate::completion::{CompletionEvent, CompletionSource};
     use crate::monitor::process::{ProcessInventory, ProcessSample};
@@ -191,11 +193,13 @@ mod tests {
         let inventory = ProcessInventory::from_samples([ProcessSample {
             pid: 10,
             parent_pid: Some(1),
+            pgid: Some(10),
             start_time_secs: 42,
             uid: Some(1000),
             memory_bytes: 128,
             cpu_percent: 0.5,
             command: "opencode ses_alpha worker".to_string(),
+            listening_ports: vec![],
         }]);
 
         let index = SessionProcessIndex::from_inventory(&inventory);
@@ -267,11 +271,13 @@ mod tests {
             SessionProcessIndex::from_inventory(&ProcessInventory::from_samples([ProcessSample {
                 pid: 10,
                 parent_pid: Some(1),
+                pgid: Some(10),
                 start_time_secs: 42,
                 uid: Some(1000),
                 memory_bytes: 128,
                 cpu_percent: 0.5,
                 command: "opencode ses_alpha worker".to_string(),
+                listening_ports: vec![],
             }]));
         let artifact_index = SessionArtifactIndex::from_snapshot(&StorageSnapshot {
             artifacts: vec![ArtifactRecord {

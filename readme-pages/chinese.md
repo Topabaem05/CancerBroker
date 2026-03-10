@@ -15,30 +15,6 @@ cd CancerBroker
 cargo build --release
 ```
 
-- 无需克隆即可安装 OpenCode Session Memory 工具：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
-opencode --restart
-```
-
-- 通过 Homebrew 安装：
-
-```bash
-brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
-opencode --restart
-```
-
-- 在 OpenCode 1.2.22 中，它会默认作为全局自定义工具 `session_memory` 安装到 `~/.config/opencode/tools/`。
-
-- 如果 Homebrew 需要显式 tap URL：
-
-```bash
-brew tap topabaem05/cancerbroker https://github.com/Topabaem05/CancerBroker
-brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
-opencode --restart
-```
-
 ## Usage
 
 - 检查当前运行模式：

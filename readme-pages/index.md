@@ -12,5 +12,4 @@ Choose a language page:
 
 Notes:
 
-- `한국어` has a separate [한국어 도구 가이드](korean-plugin-guide.md).
 - All pages cover installation, usage, and verification commands.

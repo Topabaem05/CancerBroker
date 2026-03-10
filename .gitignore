@@ -1,7 +1,6 @@
 target/
 tests/
 .DS_Store
-packaging/npm/**/node_modules/
 .sisyphus/drafts/
 .sisyphus/evidence/
 .sisyphus/notepads/

@@ -4,11 +4,13 @@ use std::collections::BTreeMap;
 pub struct ProcessSample {
     pub pid: u32,
     pub parent_pid: Option<u32>,
+    pub pgid: Option<u32>,
     pub start_time_secs: u64,
     pub uid: Option<u32>,
     pub memory_bytes: u64,
     pub cpu_percent: f32,
     pub command: String,
+    pub listening_ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +30,70 @@ fn normalize_children(children_by_parent: &mut BTreeMap<u32, Vec<u32>>) {
         children.sort_unstable();
         children.dedup();
     }
+}
+
+fn get_pgid(pid: u32) -> Option<u32> {
+    use nix::unistd::{getpgid, Pid};
+
+    getpgid(Some(Pid::from_raw(pid as i32)))
+        .ok()
+        .map(|pgid| pgid.as_raw() as u32)
+}
+
+#[cfg(target_os = "macos")]
+fn get_listening_ports(pid: u32) -> Vec<u16> {
+    use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
+    use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, TcpSIState};
+    use libproc::libproc::proc_pid::listpidinfo;
+
+    let pid_i32 = pid as i32;
+
+    let fds = match listpidinfo::<ListFDs>(pid_i32, 256) {
+        Ok(fds) => fds,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut ports = Vec::new();
+    for fd in fds {
+        if fd.proc_fdtype != ProcFDType::Socket as u32 {
+            continue;
+        }
+
+        let socket_info = match pidfdinfo::<SocketFDInfo>(pid_i32, fd.proc_fd) {
+            Ok(info) => info,
+            Err(_) => continue,
+        };
+
+        match socket_info.psi.soi_kind.into() {
+            SocketInfoKind::Tcp => {
+                let tcp = unsafe { socket_info.psi.soi_proto.pri_tcp };
+                if tcp.tcpsi_state == TcpSIState::Listen as i32 {
+                    let local_port =
+                        unsafe { socket_info.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport } as u16;
+                    if local_port > 0 {
+                        ports.push(local_port);
+                    }
+                }
+            }
+            SocketInfoKind::In => {
+                let local_port = unsafe { socket_info.psi.soi_proto.pri_in.insi_lport } as u16;
+                if local_port > 0 {
+                    ports.push(local_port);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_listening_ports(_pid: u32) -> Vec<u16> {
+    // TODO: Implement for Linux using /proc/net/tcp + /proc/{pid}/fd
+    Vec::new()
 }
 
 fn build_process_fingerprint(process: &ProcessSample) -> ProcessFingerprint {
@@ -111,14 +177,20 @@ impl ProcessInventory {
                     .join(" ")
             };
 
+            let pid_u32 = process.pid().as_u32();
+            let pgid = get_pgid(pid_u32);
+            let listening_ports = get_listening_ports(pid_u32);
+
             ProcessSample {
-                pid: process.pid().as_u32(),
+                pid: pid_u32,
                 parent_pid: process.parent().map(|pid| pid.as_u32()),
+                pgid,
                 start_time_secs: process.start_time(),
                 uid: process.user_id().map(|uid| **uid),
                 memory_bytes: process.memory(),
                 cpu_percent: process.cpu_usage(),
                 command,
+                listening_ports,
             }
         }))
     }
@@ -126,36 +198,42 @@ impl ProcessInventory {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProcessFingerprint, ProcessInventory, ProcessSample, build_process_fingerprint};
+    use super::{build_process_fingerprint, ProcessFingerprint, ProcessInventory, ProcessSample};
 
     fn sample_processes() -> Vec<ProcessSample> {
         vec![
             ProcessSample {
                 pid: 10,
                 parent_pid: Some(1),
+                pgid: Some(10),
                 start_time_secs: 100,
                 uid: Some(501),
                 memory_bytes: 512,
                 cpu_percent: 0.5,
                 command: "opencode ses_alpha worker".to_string(),
+                listening_ports: vec![],
             },
             ProcessSample {
                 pid: 11,
                 parent_pid: Some(1),
+                pgid: Some(11),
                 start_time_secs: 110,
                 uid: Some(501),
                 memory_bytes: 256,
                 cpu_percent: 0.2,
                 command: "opencode ses_beta child".to_string(),
+                listening_ports: vec![],
             },
             ProcessSample {
                 pid: 12,
                 parent_pid: Some(1),
+                pgid: Some(12),
                 start_time_secs: 120,
                 uid: Some(501),
                 memory_bytes: 128,
                 cpu_percent: 0.1,
                 command: "opencode ses_beta child-duplicate-parent".to_string(),
+                listening_ports: vec![],
             },
         ]
     }
@@ -166,11 +244,13 @@ mod tests {
         processes.push(ProcessSample {
             pid: 11,
             parent_pid: Some(1),
+            pgid: Some(11),
             start_time_secs: 111,
             uid: Some(501),
             memory_bytes: 300,
             cpu_percent: 0.3,
             command: "opencode ses_beta child-replaced".to_string(),
+            listening_ports: vec![],
         });
 
         let inventory = ProcessInventory::from_samples(processes);
