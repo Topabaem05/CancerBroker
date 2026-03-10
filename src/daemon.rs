@@ -15,7 +15,9 @@ use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
 use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::scan_allowlisted_roots;
-use crate::resolution::{CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex};
+use crate::resolution::{
+    CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
+};
 use crate::safety::OwnershipPolicy;
 
 #[derive(Debug, Clone, Serialize)]

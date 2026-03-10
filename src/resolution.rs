@@ -197,8 +197,8 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use super::{
-        accepts_completion_event, build_resolved_candidates, session_ids_in_text,
         CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
+        accepts_completion_event, build_resolved_candidates, session_ids_in_text,
     };
     use crate::completion::{CompletionEvent, CompletionSource};
     use crate::monitor::process::{ProcessInventory, ProcessSample};

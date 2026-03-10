@@ -244,12 +244,10 @@ impl AutoCleanupEngine {
 
             if outcome != ProcessRemediationOutcome::Rejected("uid_mismatch")
                 && outcome != ProcessRemediationOutcome::Rejected("missing_command_marker")
+                && let Some(pgid) = identity.pgid
+                && seen_pgids.insert(pgid)
             {
-                if let Some(pgid) = identity.pgid {
-                    if seen_pgids.insert(pgid) {
-                        group_leaders.push((pgid, identity.clone()));
-                    }
-                }
+                group_leaders.push((pgid, identity.clone()));
             }
 
             process_outcomes.push(ProcessCleanupResult {

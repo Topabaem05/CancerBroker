@@ -60,7 +60,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::UNIX_EPOCH;
 
-    use super::{build_dispatch_decision, CleanupDispatcher, DispatchDecision};
+    use super::{CleanupDispatcher, DispatchDecision, build_dispatch_decision};
     use crate::completion::{CompletionEvent, CompletionSource, CompletionStateStore};
     use crate::monitor::storage::{ArtifactRecord, StorageSnapshot};
     use crate::resolution::{

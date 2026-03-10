@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-use crate::safety::{validate_process_identity, OwnershipPolicy, ProcessIdentity, SafetyDecision};
+use crate::safety::{OwnershipPolicy, ProcessIdentity, SafetyDecision, validate_process_identity};
 
 #[derive(Debug, Clone)]
 pub struct ProcessRemediationRequest {
@@ -79,7 +79,7 @@ pub fn remediate_process_group(
 fn remediate_process_unix(
     request: &ProcessRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
-    use nix::sys::signal::{kill, Signal};
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let pid = Pid::from_raw(request.identity.pid as i32);
@@ -146,7 +146,7 @@ fn wait_for_group_exit(pgid: nix::unistd::Pid, timeout: Duration) -> bool {
 fn remediate_process_group_unix(
     request: &ProcessGroupRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
-    use nix::sys::signal::{killpg, Signal};
+    use nix::sys::signal::{Signal, killpg};
     use nix::unistd::Pid;
 
     let pgid = Pid::from_raw(request.pgid as i32);
@@ -178,8 +178,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        remediate_process, remediate_process_group, signal_error, ProcessGroupRemediationRequest,
-        ProcessRemediationOutcome, ProcessRemediationRequest,
+        ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
+        remediate_process, remediate_process_group, signal_error,
     };
     use crate::safety::{OwnershipPolicy, ProcessIdentity};
 

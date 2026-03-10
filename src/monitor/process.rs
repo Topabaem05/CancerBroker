@@ -33,7 +33,7 @@ fn normalize_children(children_by_parent: &mut BTreeMap<u32, Vec<u32>>) {
 }
 
 fn get_pgid(pid: u32) -> Option<u32> {
-    use nix::unistd::{getpgid, Pid};
+    use nix::unistd::{Pid, getpgid};
 
     getpgid(Some(Pid::from_raw(pid as i32)))
         .ok()
@@ -42,7 +42,7 @@ fn get_pgid(pid: u32) -> Option<u32> {
 
 fn get_listening_ports(pid: u32) -> Vec<u16> {
     use netstat2::{
-        get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState,
+        AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState, get_sockets_info,
     };
 
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
@@ -180,7 +180,7 @@ impl ProcessInventory {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_process_fingerprint, ProcessFingerprint, ProcessInventory, ProcessSample};
+    use super::{ProcessFingerprint, ProcessInventory, ProcessSample, build_process_fingerprint};
 
     fn sample_processes() -> Vec<ProcessSample> {
         vec![

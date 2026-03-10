@@ -99,9 +99,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        allowlist_contains_path, canonicalize_policy_path, command_matches_policy,
-        is_path_allowlisted, validate_process_identity, OwnershipPolicy, ProcessIdentity,
-        SafetyDecision,
+        OwnershipPolicy, ProcessIdentity, SafetyDecision, allowlist_contains_path,
+        canonicalize_policy_path, command_matches_policy, is_path_allowlisted,
+        validate_process_identity,
     };
 
     fn sample_identity() -> ProcessIdentity {
