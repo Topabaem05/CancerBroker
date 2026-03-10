@@ -12,7 +12,8 @@ use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::{IpcError, receive_completion_events_once};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::remediation::{
-    ProcessRemediationOutcome, ProcessRemediationRequest, RemediationError, remediate_process,
+    ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
+    RemediationError, remediate_process, remediate_process_group,
 };
 use crate::resolution::session_ids_in_text;
 use crate::resolution::{CandidateResolver, ResolvedCandidates};
@@ -40,10 +41,17 @@ pub struct ProcessCleanupResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessGroupCleanupResult {
+    pub pgid: u32,
+    pub outcome: ProcessRemediationOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoCleanupResult {
     pub decision: AutoCleanupDecision,
     pub cleanup_outcome: CleanupOutcome,
     pub process_outcomes: Vec<ProcessCleanupResult>,
+    pub group_outcomes: Vec<ProcessGroupCleanupResult>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,11 +96,13 @@ impl AutoCleanupEngine {
                 decision: AutoCleanupDecision::SkippedDuplicate,
                 cleanup_outcome: CleanupOutcome::default(),
                 process_outcomes: Vec::new(),
+                group_outcomes: Vec::new(),
             }),
             DispatchDecision::DeferredToReconciliation(_) => Ok(AutoCleanupResult {
                 decision: AutoCleanupDecision::DeferredToReconciliation,
                 cleanup_outcome: CleanupOutcome::default(),
                 process_outcomes: Vec::new(),
+                group_outcomes: Vec::new(),
             }),
             DispatchDecision::Immediate(resolved) => {
                 let result = self.execute_cleanup(event, resolved, now)?;
@@ -196,7 +206,7 @@ impl AutoCleanupEngine {
         resolved: ResolvedCandidates,
         now: SystemTime,
     ) -> Result<AutoCleanupResult, AutoCleanupError> {
-        let process_outcomes = self.remediate_processes(&resolved)?;
+        let (process_outcomes, group_outcomes) = self.remediate_processes(&resolved)?;
         let cleanup_outcome = remove_stale_allowlisted_artifacts(
             &resolved.artifacts,
             &self.settings.cleanup_policy,
@@ -213,14 +223,17 @@ impl AutoCleanupEngine {
             decision,
             cleanup_outcome,
             process_outcomes,
+            group_outcomes,
         })
     }
 
     fn remediate_processes(
         &self,
         resolved: &ResolvedCandidates,
-    ) -> Result<Vec<ProcessCleanupResult>, AutoCleanupError> {
-        let mut outcomes = Vec::with_capacity(resolved.processes.len());
+    ) -> Result<(Vec<ProcessCleanupResult>, Vec<ProcessGroupCleanupResult>), AutoCleanupError> {
+        let mut process_outcomes = Vec::with_capacity(resolved.processes.len());
+        let mut seen_pgids = std::collections::BTreeSet::new();
+        let mut group_leaders: Vec<(u32, crate::safety::ProcessIdentity)> = Vec::new();
 
         for identity in &resolved.processes {
             let outcome = remediate_process(&ProcessRemediationRequest {
@@ -228,13 +241,35 @@ impl AutoCleanupEngine {
                 ownership_policy: self.settings.ownership_policy.clone(),
                 term_timeout: self.settings.term_timeout,
             })?;
-            outcomes.push(ProcessCleanupResult {
+
+            if outcome != ProcessRemediationOutcome::Rejected("uid_mismatch")
+                && outcome != ProcessRemediationOutcome::Rejected("missing_command_marker")
+            {
+                if let Some(pgid) = identity.pgid {
+                    if seen_pgids.insert(pgid) {
+                        group_leaders.push((pgid, identity.clone()));
+                    }
+                }
+            }
+
+            process_outcomes.push(ProcessCleanupResult {
                 pid: identity.pid,
                 outcome,
             });
         }
 
-        Ok(outcomes)
+        let mut group_outcomes = Vec::with_capacity(group_leaders.len());
+        for (pgid, leader) in group_leaders {
+            let outcome = remediate_process_group(&ProcessGroupRemediationRequest {
+                pgid,
+                leader_identity: leader,
+                ownership_policy: self.settings.ownership_policy.clone(),
+                term_timeout: self.settings.term_timeout,
+            })?;
+            group_outcomes.push(ProcessGroupCleanupResult { pgid, outcome });
+        }
+
+        Ok((process_outcomes, group_outcomes))
     }
 }
 

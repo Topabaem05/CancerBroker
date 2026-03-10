@@ -40,45 +40,33 @@ fn get_pgid(pid: u32) -> Option<u32> {
         .map(|pgid| pgid.as_raw() as u32)
 }
 
-#[cfg(target_os = "macos")]
 fn get_listening_ports(pid: u32) -> Vec<u16> {
-    use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
-    use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind, TcpSIState};
-    use libproc::libproc::proc_pid::listpidinfo;
+    use netstat2::{
+        get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState,
+    };
 
-    let pid_i32 = pid as i32;
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
 
-    let fds = match listpidinfo::<ListFDs>(pid_i32, 256) {
-        Ok(fds) => fds,
+    let sockets = match get_sockets_info(af_flags, proto_flags) {
+        Ok(sockets) => sockets,
         Err(_) => return Vec::new(),
     };
 
     let mut ports = Vec::new();
-    for fd in fds {
-        if fd.proc_fdtype != ProcFDType::Socket as u32 {
+    for si in sockets {
+        if !si.associated_pids.contains(&pid) {
             continue;
         }
-
-        let socket_info = match pidfdinfo::<SocketFDInfo>(pid_i32, fd.proc_fd) {
-            Ok(info) => info,
-            Err(_) => continue,
-        };
-
-        match socket_info.psi.soi_kind.into() {
-            SocketInfoKind::Tcp => {
-                let tcp = unsafe { socket_info.psi.soi_proto.pri_tcp };
-                if tcp.tcpsi_state == TcpSIState::Listen as i32 {
-                    let local_port =
-                        unsafe { socket_info.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport } as u16;
-                    if local_port > 0 {
-                        ports.push(local_port);
-                    }
+        match si.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(ref tcp_si) if tcp_si.state == TcpState::Listen => {
+                if tcp_si.local_port > 0 {
+                    ports.push(tcp_si.local_port);
                 }
             }
-            SocketInfoKind::In => {
-                let local_port = unsafe { socket_info.psi.soi_proto.pri_in.insi_lport } as u16;
-                if local_port > 0 {
-                    ports.push(local_port);
+            ProtocolSocketInfo::Udp(ref udp_si) => {
+                if udp_si.local_port > 0 {
+                    ports.push(udp_si.local_port);
                 }
             }
             _ => {}
@@ -88,12 +76,6 @@ fn get_listening_ports(pid: u32) -> Vec<u16> {
     ports.sort_unstable();
     ports.dedup();
     ports
-}
-
-#[cfg(not(target_os = "macos"))]
-fn get_listening_ports(_pid: u32) -> Vec<u16> {
-    // TODO: Implement for Linux using /proc/net/tcp + /proc/{pid}/fd
-    Vec::new()
 }
 
 fn build_process_fingerprint(process: &ProcessSample) -> ProcessFingerprint {

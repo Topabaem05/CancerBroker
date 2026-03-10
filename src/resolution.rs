@@ -46,9 +46,15 @@ pub struct SessionArtifactIndex {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct SessionPortIndex {
+    by_port: BTreeMap<u16, Vec<ProcessIdentity>>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct CandidateResolver {
     process_index: SessionProcessIndex,
     artifact_index: SessionArtifactIndex,
+    port_index: SessionPortIndex,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -108,11 +114,50 @@ impl SessionArtifactIndex {
     }
 }
 
+impl SessionPortIndex {
+    pub fn from_inventory(inventory: &ProcessInventory) -> Self {
+        let mut by_port: BTreeMap<u16, Vec<ProcessIdentity>> = BTreeMap::new();
+
+        for sample in inventory.samples() {
+            let identity = build_process_identity(sample);
+            for &port in &sample.listening_ports {
+                by_port.entry(port).or_default().push(identity.clone());
+            }
+        }
+
+        Self { by_port }
+    }
+
+    pub fn resolve_by_port(&self, port: u16) -> Vec<ProcessIdentity> {
+        self.by_port.get(&port).cloned().unwrap_or_default()
+    }
+
+    pub fn resolve_by_ports(&self, ports: &[u16]) -> Vec<ProcessIdentity> {
+        let mut seen_pids = std::collections::BTreeSet::new();
+        let mut results = Vec::new();
+
+        for &port in ports {
+            for identity in self.resolve_by_port(port) {
+                if seen_pids.insert(identity.pid) {
+                    results.push(identity);
+                }
+            }
+        }
+
+        results
+    }
+}
+
 impl CandidateResolver {
-    pub fn new(process_index: SessionProcessIndex, artifact_index: SessionArtifactIndex) -> Self {
+    pub fn new(
+        process_index: SessionProcessIndex,
+        artifact_index: SessionArtifactIndex,
+        port_index: SessionPortIndex,
+    ) -> Self {
         Self {
             process_index,
             artifact_index,
+            port_index,
         }
     }
 
@@ -133,6 +178,10 @@ impl CandidateResolver {
 
         build_resolved_candidates(processes, artifacts)
     }
+
+    pub fn resolve_by_ports(&self, ports: &[u16]) -> Vec<ProcessIdentity> {
+        self.port_index.resolve_by_ports(ports)
+    }
 }
 
 pub(crate) fn session_ids_in_text(text: &str) -> Vec<String> {
@@ -149,7 +198,7 @@ mod tests {
 
     use super::{
         accepts_completion_event, build_resolved_candidates, session_ids_in_text,
-        CandidateResolver, SessionArtifactIndex, SessionProcessIndex,
+        CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
     };
     use crate::completion::{CompletionEvent, CompletionSource};
     use crate::monitor::process::{ProcessInventory, ProcessSample};
@@ -242,6 +291,7 @@ mod tests {
         let resolver = CandidateResolver::new(
             SessionProcessIndex::default(),
             SessionArtifactIndex::default(),
+            SessionPortIndex::default(),
         );
 
         let resolved = resolver.resolve(&status_event(None));
@@ -255,6 +305,7 @@ mod tests {
         let resolver = CandidateResolver::new(
             SessionProcessIndex::default(),
             SessionArtifactIndex::default(),
+            SessionPortIndex::default(),
         );
         let mut event = status_event(Some("ses_alpha"));
         event.source = CompletionSource::ToolPartCompleted;
@@ -287,12 +338,75 @@ mod tests {
             }],
             total_bytes: 2,
         });
-        let resolver = CandidateResolver::new(process_index, artifact_index);
+        let resolver =
+            CandidateResolver::new(process_index, artifact_index, SessionPortIndex::default());
 
         let resolved = resolver.resolve(&status_event(Some("ses_alpha")));
 
         assert_eq!(resolved.processes.len(), 1);
         assert_eq!(resolved.artifacts.len(), 1);
         assert!(resolved.immediate_cleanup_eligible);
+    }
+
+    #[test]
+    fn session_port_index_maps_listening_ports_to_identities() {
+        let inventory = ProcessInventory::from_samples([ProcessSample {
+            pid: 20,
+            parent_pid: Some(1),
+            pgid: Some(20),
+            start_time_secs: 50,
+            uid: Some(1000),
+            memory_bytes: 256,
+            cpu_percent: 1.0,
+            command: "opencode ses_gamma worker".to_string(),
+            listening_ports: vec![3000, 8080],
+        }]);
+
+        let index = SessionPortIndex::from_inventory(&inventory);
+
+        let by_3000 = index.resolve_by_port(3000);
+        assert_eq!(by_3000.len(), 1);
+        assert_eq!(by_3000[0].pid, 20);
+
+        let by_8080 = index.resolve_by_port(8080);
+        assert_eq!(by_8080.len(), 1);
+        assert_eq!(by_8080[0].pid, 20);
+
+        assert!(index.resolve_by_port(9999).is_empty());
+    }
+
+    #[test]
+    fn session_port_index_deduplicates_pids_across_ports() {
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 30,
+                parent_pid: Some(1),
+                pgid: Some(30),
+                start_time_secs: 60,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "opencode ses_delta worker".to_string(),
+                listening_ports: vec![3000, 4000],
+            },
+            ProcessSample {
+                pid: 31,
+                parent_pid: Some(1),
+                pgid: Some(31),
+                start_time_secs: 61,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "opencode ses_epsilon worker".to_string(),
+                listening_ports: vec![4000],
+            },
+        ]);
+
+        let index = SessionPortIndex::from_inventory(&inventory);
+        let resolved = index.resolve_by_ports(&[3000, 4000]);
+
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0].pid, 30);
+        assert_eq!(resolved[1].pid, 31);
     }
 }

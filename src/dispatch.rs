@@ -60,11 +60,12 @@ mod tests {
     use std::path::PathBuf;
     use std::time::UNIX_EPOCH;
 
-    use super::{CleanupDispatcher, DispatchDecision, build_dispatch_decision};
+    use super::{build_dispatch_decision, CleanupDispatcher, DispatchDecision};
     use crate::completion::{CompletionEvent, CompletionSource, CompletionStateStore};
     use crate::monitor::storage::{ArtifactRecord, StorageSnapshot};
     use crate::resolution::{
-        CandidateResolver, ResolvedCandidates, SessionArtifactIndex, SessionProcessIndex,
+        CandidateResolver, ResolvedCandidates, SessionArtifactIndex, SessionPortIndex,
+        SessionProcessIndex,
     };
 
     fn status_event(session_id: Option<&str>) -> CompletionEvent {
@@ -105,6 +106,7 @@ mod tests {
         let resolver = CandidateResolver::new(
             SessionProcessIndex::default(),
             SessionArtifactIndex::default(),
+            SessionPortIndex::default(),
         );
         let event = status_event(Some("ses_alpha"));
         let mut dispatcher = CleanupDispatcher::new(CompletionStateStore::new(60), resolver);
@@ -126,6 +128,7 @@ mod tests {
         let resolver = CandidateResolver::new(
             SessionProcessIndex::default(),
             SessionArtifactIndex::default(),
+            SessionPortIndex::default(),
         );
         let event = status_event(Some("ses_alpha"));
         let mut dispatcher = CleanupDispatcher::new(CompletionStateStore::new(60), resolver);
@@ -153,6 +156,7 @@ mod tests {
                 }],
                 total_bytes: 2,
             }),
+            SessionPortIndex::default(),
         );
         let event = status_event(Some("ses_alpha_artifact"));
         let mut dispatcher = CleanupDispatcher::new(CompletionStateStore::new(60), resolver);
@@ -174,6 +178,7 @@ mod tests {
         let resolver = CandidateResolver::new(
             SessionProcessIndex::default(),
             SessionArtifactIndex::default(),
+            SessionPortIndex::default(),
         );
         let event = status_event(None);
         let mut dispatcher = CleanupDispatcher::new(CompletionStateStore::new(60), resolver);

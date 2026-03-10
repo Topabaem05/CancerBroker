@@ -15,7 +15,7 @@ use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
 use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::scan_allowlisted_roots;
-use crate::resolution::{CandidateResolver, SessionArtifactIndex, SessionProcessIndex};
+use crate::resolution::{CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex};
 use crate::safety::OwnershipPolicy;
 
 #[derive(Debug, Clone, Serialize)]
@@ -143,6 +143,7 @@ fn build_resolver(config: &GuardianConfig) -> Result<CandidateResolver, IpcError
     Ok(CandidateResolver::new(
         SessionProcessIndex::from_inventory(&inventory),
         SessionArtifactIndex::from_snapshot(&snapshot),
+        SessionPortIndex::from_inventory(&inventory),
     ))
 }
 
