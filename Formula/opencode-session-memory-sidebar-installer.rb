@@ -1,8 +1,8 @@
 class OpencodeSessionMemorySidebarInstaller < Formula
   desc "Installer for the Opencode RAM optimizer tool"
   homepage "https://github.com/Topabaem05/CancerBroker"
-  url "https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.7/CancerBroker.cjs"
-  version "0.1.7"
+  url "https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.8/CancerBroker.cjs"
+  version "0.1.8"
   sha256 "f24bedab661a27f614dbeed3f9bd2c84bacd118a025cbedb55ccd23a2088b035"
   license "MIT"
 

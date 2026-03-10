@@ -49,7 +49,7 @@ brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
 Current versioned release asset URL:
 
 ```text
-https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.7/CancerBroker.cjs
+https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.8/CancerBroker.cjs
 ```
 
 ## Publish Order
