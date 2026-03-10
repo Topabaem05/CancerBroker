@@ -2,20 +2,22 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use clap::{Parser, Subcommand};
-use color_eyre::eyre::{Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, eyre};
 use serde::Serialize;
 use std::time::Duration;
 
 use crate::config::load_config;
 use crate::daemon::{DaemonRunOptions, run_daemon_loop};
+use crate::mcp::run_mcp_server;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
+use crate::setup::{SetupOutcome, setup as setup_opencode, uninstall as uninstall_opencode};
 
 #[derive(Debug, Parser)]
 #[command(name = "cancerbroker")]
 pub struct Cli {
     #[arg(long)]
-    pub config: PathBuf,
+    pub config: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -38,6 +40,11 @@ pub enum Command {
         #[arg(long, default_value_t = 1)]
         max_events: usize,
     },
+    Mcp,
+    Setup {
+        #[arg(long)]
+        uninstall: bool,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -59,7 +66,7 @@ fn render_status_output(output: &StatusOutput<'_>, json: bool) -> Result<String>
     }
 }
 
-fn default_signal_windows(config: &crate::config::GuardianConfig) -> Vec<SignalWindow> {
+pub(crate) fn default_signal_windows(config: &crate::config::GuardianConfig) -> Vec<SignalWindow> {
     vec![
         SignalWindow {
             name: "rss_slope".to_string(),
@@ -86,6 +93,10 @@ fn build_runtime_input(
         now,
         evidence_dir,
     }
+}
+
+fn require_config_path(config: Option<PathBuf>) -> Result<PathBuf> {
+    config.ok_or_else(|| eyre!("--config is required for this command"))
 }
 
 fn render_runtime_output(output: &RuntimeOutcome, json: bool) -> Result<String> {
@@ -124,15 +135,33 @@ fn render_daemon_output(output: &crate::daemon::DaemonOutput, json: bool) -> Res
     }
 }
 
-pub fn run(cli: Cli) -> Result<()> {
-    let config = load_config(&cli.config).wrap_err("config load failure")?;
+fn render_setup_output(output: &SetupOutcome) -> String {
+    match &output.backup_path {
+        Some(backup_path) => format!(
+            "opencode_config={} backup_path={} installed={}",
+            output.config_path.display(),
+            backup_path.display(),
+            output.installed
+        ),
+        None => format!(
+            "opencode_config={} installed={}",
+            output.config_path.display(),
+            output.installed
+        ),
+    }
+}
 
+pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Status { json } => {
+            let config_path = require_config_path(cli.config)?;
+            let config = load_config(&config_path).wrap_err("config load failure")?;
             let output = build_status_output(&config);
             println!("{}", render_status_output(&output, json)?);
         }
         Command::RunOnce { json, evidence_dir } => {
+            let config_path = require_config_path(cli.config)?;
+            let config = load_config(&config_path).wrap_err("config load failure")?;
             let output = run_once(
                 &config,
                 build_runtime_input(&config, evidence_dir, SystemTime::now()),
@@ -140,6 +169,8 @@ pub fn run(cli: Cli) -> Result<()> {
             println!("{}", render_runtime_output(&output, json)?);
         }
         Command::Daemon { json, max_events } => {
+            let config_path = require_config_path(cli.config)?;
+            let config = load_config(&config_path).wrap_err("config load failure")?;
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             let output = runtime
                 .block_on(run_daemon_loop(
@@ -148,6 +179,20 @@ pub fn run(cli: Cli) -> Result<()> {
                 ))
                 .wrap_err("daemon run failure")?;
             println!("{}", render_daemon_output(&output, json)?);
+        }
+        Command::Mcp => {
+            let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
+            runtime
+                .block_on(run_mcp_server(cli.config))
+                .wrap_err("mcp run failure")?;
+        }
+        Command::Setup { uninstall } => {
+            let output = if uninstall {
+                uninstall_opencode()?
+            } else {
+                setup_opencode()?
+            };
+            println!("{}", render_setup_output(&output));
         }
     }
 
@@ -163,11 +208,13 @@ mod tests {
 
     use super::{
         Cli, Command, build_daemon_run_options, build_runtime_input, build_status_output,
-        default_signal_windows, render_daemon_output, render_runtime_output, render_status_output,
+        default_signal_windows, render_daemon_output, render_runtime_output, render_setup_output,
+        render_status_output, require_config_path,
     };
     use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
     use crate::daemon::DaemonOutput;
     use crate::runtime::RuntimeOutcome;
+    use crate::setup::SetupOutcome;
 
     #[test]
     fn status_output_renders_human_and_json_modes() {
@@ -279,6 +326,26 @@ mod tests {
     }
 
     #[test]
+    fn require_config_path_rejects_missing_value() {
+        let error = require_config_path(None).expect_err("missing config should fail");
+
+        assert!(error.to_string().contains("--config is required"));
+    }
+
+    #[test]
+    fn setup_output_renders_backup_when_present() {
+        let output = render_setup_output(&SetupOutcome {
+            config_path: PathBuf::from("/tmp/opencode.json"),
+            backup_path: Some(PathBuf::from("/tmp/opencode.json.bak")),
+            installed: true,
+        });
+
+        assert!(output.contains("opencode_config=/tmp/opencode.json"));
+        assert!(output.contains("backup_path=/tmp/opencode.json.bak"));
+        assert!(output.contains("installed=true"));
+    }
+
+    #[test]
     fn clap_parser_builds_run_once_command() {
         let cli = Cli::parse_from([
             "cancerbroker",
@@ -292,7 +359,7 @@ mod tests {
 
         assert_eq!(
             cli.config,
-            PathBuf::from("fixtures/config/observe-only.toml")
+            Some(PathBuf::from("fixtures/config/observe-only.toml"))
         );
         match cli.command {
             Command::RunOnce { json, evidence_dir } => {
@@ -301,5 +368,24 @@ mod tests {
             }
             _ => panic!("expected run-once command"),
         }
+    }
+
+    #[test]
+    fn clap_parser_builds_setup_command_without_config() {
+        let cli = Cli::parse_from(["cancerbroker", "setup", "--uninstall"]);
+
+        assert_eq!(cli.config, None);
+        match cli.command {
+            Command::Setup { uninstall } => assert!(uninstall),
+            _ => panic!("expected setup command"),
+        }
+    }
+
+    #[test]
+    fn clap_parser_builds_mcp_command_with_optional_config() {
+        let cli = Cli::parse_from(["cancerbroker", "--config", "/tmp/guardian.toml", "mcp"]);
+
+        assert_eq!(cli.config, Some(PathBuf::from("/tmp/guardian.toml")));
+        assert!(matches!(cli.command, Command::Mcp));
     }
 }
