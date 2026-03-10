@@ -264,6 +264,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
+name = "cancerbroker"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "assert_cmd",
+ "clap",
+ "color-eyre",
+ "config",
+ "interprocess",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "netstat2",
+ "nix",
+ "notify 8.2.0",
+ "notify-debouncer-full",
+ "predicates",
+ "rustix 0.38.44",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1431,35 +1460,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "opencode-guardian"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "assert_cmd",
- "clap",
- "color-eyre",
- "config",
- "interprocess",
- "metrics",
- "metrics-exporter-prometheus",
- "netstat2",
- "nix",
- "notify 8.2.0",
- "notify-debouncer-full",
- "predicates",
- "rustix 0.38.44",
- "serde",
- "serde_json",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "openssl-probe"

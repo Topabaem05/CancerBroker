@@ -4,10 +4,16 @@
 
 RAM optimizer for Opencode subagents and background helper processes.
 
+## Installation
+
+```bash
+cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
 ## Quick Start
 
 ```bash
-cargo run -- --config fixtures/config/observe-only.toml status --json
+cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
 ## Architecture

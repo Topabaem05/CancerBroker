@@ -8,9 +8,9 @@ use crate::completion::CompletionSource;
 
 const DEFAULT_STORAGE_ALLOWLIST: &str = "~/.local/share/opencode/storage";
 const DEFAULT_COMMAND_MARKERS: [&str; 2] = ["opencode", "openagent"];
-const DEFAULT_IPC_SOCKET_PATH: &str = "/tmp/opencode-guardian.sock";
-const DEFAULT_COMPLETION_SOCKET_PATH: &str = "/tmp/opencode-guardian-completion.sock";
-const DEFAULT_COMPLETION_STATE_PATH: &str = "/tmp/opencode-guardian-completion-state.json";
+const DEFAULT_IPC_SOCKET_PATH: &str = "/tmp/cancerbroker.sock";
+const DEFAULT_COMPLETION_SOCKET_PATH: &str = "/tmp/cancerbroker-completion.sock";
+const DEFAULT_COMPLETION_STATE_PATH: &str = "/tmp/cancerbroker-completion-state.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]

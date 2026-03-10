@@ -5,5 +5,5 @@ enabled_sources = ["status", "idle", "tool_part_completed", "error", "deleted", 
 dedupe_ttl_secs = 600
 cleanup_retry_interval_secs = 15
 reconciliation_interval_secs = 60
-daemon_socket_path = "/tmp/opencode-guardian-completion.sock"
-state_path = "/tmp/opencode-guardian-completion-state.json"
+daemon_socket_path = "/tmp/cancerbroker-completion.sock"
+state_path = "/tmp/cancerbroker-completion-state.json"

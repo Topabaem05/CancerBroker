@@ -29,7 +29,7 @@ pub fn render_launchd_plist(exec_path: &str, config_path: &str, log_path: &str) 
 }
 
 const SYSTEMD_TEMPLATE: &str = r#"[Unit]
-Description=opencode-guardian sidecar
+Description=cancerbroker sidecar
 After=network.target
 
 [Service]
@@ -47,7 +47,7 @@ const LAUNCHD_TEMPLATE: &str = r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <plist version=\"1.0\">
   <dict>
     <key>Label</key>
-    <string>com.opencode.guardian</string>
+    <string>com.cancerbroker</string>
     <key>ProgramArguments</key>
     <array>
       <string>{{EXEC_PATH}}</string>
@@ -83,14 +83,14 @@ mod tests {
     #[test]
     fn render_systemd_unit_injects_exec_config_and_workdir() {
         let rendered = render_systemd_unit(
-            "/usr/local/bin/opencode-guardian",
-            "/etc/opencode-guardian.toml",
-            "/var/lib/opencode-guardian",
+            "/usr/local/bin/cancerbroker",
+            "/etc/cancerbroker.toml",
+            "/var/lib/cancerbroker",
         );
 
-        assert!(rendered.contains("WorkingDirectory=/var/lib/opencode-guardian"));
+        assert!(rendered.contains("WorkingDirectory=/var/lib/cancerbroker"));
         assert!(rendered.contains(
-            "ExecStart=/usr/local/bin/opencode-guardian --config /etc/opencode-guardian.toml run-once --json"
+            "ExecStart=/usr/local/bin/cancerbroker --config /etc/cancerbroker.toml run-once --json"
         ));
         assert!(!rendered.contains("{{EXEC_PATH}}"));
     }
@@ -98,14 +98,14 @@ mod tests {
     #[test]
     fn render_launchd_plist_injects_program_arguments_and_log_path() {
         let rendered = render_launchd_plist(
-            "/Applications/opencode-guardian",
-            "/Users/test/.config/opencode-guardian.toml",
-            "/tmp/opencode-guardian.log",
+            "/Applications/cancerbroker",
+            "/Users/test/.config/cancerbroker.toml",
+            "/tmp/cancerbroker.log",
         );
 
-        assert!(rendered.contains("<string>/Applications/opencode-guardian</string>"));
-        assert!(rendered.contains("<string>/Users/test/.config/opencode-guardian.toml</string>"));
-        assert!(rendered.contains("<string>/tmp/opencode-guardian.log</string>"));
+        assert!(rendered.contains("<string>/Applications/cancerbroker</string>"));
+        assert!(rendered.contains("<string>/Users/test/.config/cancerbroker.toml</string>"));
+        assert!(rendered.contains("<string>/tmp/cancerbroker.log</string>"));
         assert!(!rendered.contains("{{LOG_PATH}}"));
     }
 }

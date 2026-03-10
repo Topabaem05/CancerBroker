@@ -12,7 +12,7 @@ use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 
 #[derive(Debug, Parser)]
-#[command(name = "opencode-guardian")]
+#[command(name = "cancerbroker")]
 pub struct Cli {
     #[arg(long)]
     pub config: PathBuf,
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn clap_parser_builds_run_once_command() {
         let cli = Cli::parse_from([
-            "opencode-guardian",
+            "cancerbroker",
             "--config",
             "fixtures/config/observe-only.toml",
             "run-once",

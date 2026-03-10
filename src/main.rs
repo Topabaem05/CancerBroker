@@ -1,7 +1,7 @@
 use clap::Parser;
 use color_eyre::eyre::Result;
 
-use opencode_guardian::cli::{Cli, run};
+use cancerbroker::cli::{Cli, run};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
