@@ -6,7 +6,7 @@
   - Actual OpenCode tool package.
   - Bundled into a local tool asset for clone-free installs.
   - Exposes the supported custom tool `session_memory`.
-  - Can still be published to npm later for `plugin` array based installs if needed.
+  - Focused on Opencode subagent/background RAM visibility and cleanup.
 
 - `opencode-session-memory-sidebar-installer`
   - Small CLI package for clone-free installation.
@@ -27,24 +27,13 @@
       | sh
     ```
 
-  - Planned package-exec command after npm publication:
-
-    ```bash
-    bunx opencode-session-memory-sidebar-installer
-    ```
-
-    ```bash
-    npx --yes opencode-session-memory-sidebar-installer
-    ```
-
-  - Installs a local tool file by default and edits `opencode.json` only when needed for explicit npm-package mode.
+  - Installs a local tool file by default and only touches `opencode.json` to clean stale legacy plugin entries.
 
 ## Install Channels
 
 1. Current public curl path: bootstrap script downloads the installer without cloning the repo and installs `session_memory.js` locally.
 2. Authenticated fallback path: `gh api` can bootstrap the same script if raw fetches fail.
-3. Future npm path: `bunx` / `npx` once both packages are published.
-4. Homebrew path: public tap formula from this repository.
+3. Homebrew path: public tap formula from this repository.
 
 ```bash
 brew install topabaem05/cancerbroker/opencode-session-memory-sidebar-installer
@@ -71,25 +60,12 @@ https://github.com/Topabaem05/CancerBroker/releases/download/CancerBroker-v0.1.6
 4. User runs `opencode --restart`
 5. OpenCode loads the local tool automatically on startup
 
-If you publish under a scope, the installer can still target npm explicitly with:
-
-```bash
-bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
-```
-
-The bootstrap simply forwards installer flags, so the same scoped install works there too:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package @your-scope/opencode-session-memory-sidebar
-```
-
 ## Version Policy
 
 - The two packages use independent semver.
-- Bump `opencode-session-memory-sidebar` when runtime/plugin behavior changes.
+- Bump `opencode-session-memory-sidebar` when runtime/tool behavior changes.
 - Bump `opencode-session-memory-sidebar-installer` when install UX, config editing, or CLI behavior changes.
-- If both packages change in one release, publish the plugin package first, then the installer package.
-- Keep the installer's default package target aligned with the actual published plugin package name.
+- If both packages change in one release, build the tool asset first, then the installer asset.
 
 ## Release Automation
 
@@ -107,28 +83,18 @@ That command updates the installer package version, rebuilds the standalone asse
 - Trigger: manual `workflow_dispatch`
 - Safety gate: input `confirm=publish`
 - Required secret: `NPM_TOKEN`
-- Order enforced by workflow:
-  1. validate plugin + installer packages
-  2. publish `opencode-session-memory-sidebar`
-  3. publish `opencode-session-memory-sidebar-installer`
+- Current default distribution does not require npm publication.
 
 ### Release Checklist
 
 1. Run `node ./scripts/prepare-installer-release.mjs <version>`
 2. Review changes and push `main`
-3. Run the `npm-publish` workflow with `confirm=publish` if the installer package itself should be published to npm
+3. Run the `npm-publish` workflow with `confirm=publish` only if you intentionally want npm-distributed packages as a secondary path
 4. Push tag `CancerBroker-v<version>` or run `.github/workflows/release-installer-asset.yml`
 5. Test clone-free public install with:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh
-   opencode --restart
-   ```
-
-6. Test npm package install after publish with:
-
-   ```bash
-   bunx opencode-session-memory-sidebar-installer
    opencode --restart
    ```
 

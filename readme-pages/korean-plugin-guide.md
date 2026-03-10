@@ -4,11 +4,11 @@
 - [Language Index](index.md)
 - [Back to Korean README](korean.md)
 
-## OpenCode Session Memory Tool
+## OpenCode RAM Optimizer Tool
 
 - 도구 목적:
-  - 현재 세션 + 현재 열려있는 live 세션들의 메모리 상태를 `session_memory` custom tool로 제공합니다.
-  - 토큰/컨텍스트 사용량과 RAM 상태를 함께 요약하며, 공유 프로세스 등 정확한 귀속이 불가능한 경우 `unavailable` 상태를 보여줍니다.
+  - 현재 프로젝트의 OpenCode 세션 상태와 Opencode-owned helper process RAM을 함께 요약합니다.
+  - stale duplicate helper process가 있으면 보수적으로 정리하고 cleanup 결과를 함께 보여줍니다.
 
 - 현재 OpenCode 1.2.22는 지원되는 custom tools API를 제공하므로, 이 기능은 전역/프로젝트 tool로 설치됩니다.
 
@@ -193,8 +193,8 @@ opencode --restart
 
 - 도구 출력에서 확인할 항목:
   - 제목: `Session Memory`
-  - 요약 항목: `Live`, `Exact RAM`, `Exact Total`, `Unavailable`
-  - 세션 행: `Current <session-id>`, `Other <session-id>`
+  - 요약 항목: `Live`, `Stored`, `Helper RAM`, `Helper Cleanup`
+  - helper 행: `typescript-language-server`, `biome`, `context7-mcp` 등 Opencode-owned helper 목록
 
 - 참고:
   - 폴링 주기는 5초(`5000ms`)입니다.

@@ -23,9 +23,9 @@ class OpencodeSessionMemorySidebarInstaller < Formula
     config_path = testpath/"opencode.json"
 
     system bin/"opencode-session-memory-sidebar-installer", "--config", config_path
-    assert_match "opencode-session-memory-sidebar", config_path.read
+    assert_predicate testpath/"tools/session_memory.js", :exist?
 
     system bin/"opencode-session-memory-sidebar-installer", "uninstall", "--config", config_path
-    refute_match "opencode-session-memory-sidebar", config_path.read
+    refute_predicate testpath/"tools/session_memory.js", :exist?
   end
 end

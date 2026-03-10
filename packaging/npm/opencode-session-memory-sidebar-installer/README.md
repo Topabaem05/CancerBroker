@@ -1,10 +1,10 @@
 # opencode-session-memory-sidebar-installer
 
-Clone-free installer for the OpenCode `Session Memory` tool.
+Clone-free installer for the Opencode RAM optimizer tool.
 
-This package installs a bundled local tool file into OpenCode's tool directory so Session Memory works even before any npm publication.
+This package installs a bundled local tool file into OpenCode's tool directory so the Opencode RAM optimizer works without npm publication.
 
-Important: OpenCode 1.2.22 supports custom tools via `.opencode/tools/` and `~/.config/opencode/tools/`. This installer uses that supported path and installs a `session_memory` tool.
+Important: OpenCode 1.2.22 supports custom tools via `.opencode/tools/` and `~/.config/opencode/tools/`. This installer uses that supported path and installs the `session_memory` tool.
 
 ## Install (no git clone)
 
@@ -93,51 +93,7 @@ It updates `package.json`, rebuilds the standalone installer, refreshes the Home
 
 ## Future npm path
 
-The default installer path uses a local tool file. If you explicitly want npm-package registration instead, pass `--package`.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Topabaem05/CancerBroker/main/install/opencode-session-memory-sidebar.sh | sh -s -- --package opencode-session-memory-sidebar
-```
-
-After the installer package is published to npm, these package-exec commands will be supported too:
-
-```bash
-bunx opencode-session-memory-sidebar-installer
-```
-
-```bash
-npx --yes opencode-session-memory-sidebar-installer
-```
-
-Install a scoped package name instead:
-
-```bash
-bunx opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
-```
-
-```bash
-npx --yes opencode-session-memory-sidebar-installer --package @your-scope/opencode-session-memory-sidebar
-```
-
-Project-local config via npm package:
-
-```bash
-bunx opencode-session-memory-sidebar-installer --project
-```
-
-```bash
-npx --yes opencode-session-memory-sidebar-installer --project
-```
-
-Uninstall via npm package:
-
-```bash
-bunx opencode-session-memory-sidebar-installer uninstall
-```
-
-```bash
-npx --yes opencode-session-memory-sidebar-installer uninstall
-```
+The supported baseline is the local tool install path above. The installer no longer documents npm-package registration as a first-class mode.
 
 ## Local repository workflow
 
@@ -157,15 +113,14 @@ session-memory-plugin add
 session-memory-plugin remove
 ```
 
-- `remove` deletes the installed local tool file and also removes the default npm plugin entry if it was left behind.
-- Pass `--config`, `--package`, and `--project` through exactly as you would with the installer.
+- `remove` deletes the installed local tool file and also removes any stale legacy plugin entry/file left from older versions.
+- Pass `--config` and `--project` through exactly as you would with the installer.
 - Add `--restart` if you want the helper to run `opencode --restart` after the config update.
 
 ## Notes
 
 - Installs `session_memory.js` into OpenCode's tools directory by default
 - Cleans up stale local plugin files and default npm plugin entries from `opencode.json`
-- Supports `--package` to target a scoped npm package name
 - Supports JSONC comments/trailing commas
 - Creates a timestamped backup before write
 - Restart OpenCode after install/uninstall: `opencode --restart`

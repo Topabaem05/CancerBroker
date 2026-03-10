@@ -4,7 +4,7 @@
   "bin": {
     "opencode-session-memory-sidebar-installer": "./bin/install.mjs"
   },
-  "description": "Clone-free installer for the OpenCode Session Memory tool",
+  "description": "Clone-free installer for the Opencode RAM optimizer tool",
   "files": [
     "bin",
     "dist",
@@ -12,9 +12,10 @@
   ],
   "keywords": [
     "opencode",
-    "plugin",
-    "sidebar",
-    "memory"
+    "tool",
+    "ram",
+    "cleanup",
+    "subagent"
   ],
   "license": "MIT",
   "scripts": {

@@ -73,6 +73,33 @@ export function uninstallLocalTool(options = {}) {
   };
 }
 
+export function cleanupLegacyPluginFile(options = {}) {
+  const configDir = options.configPath
+    ? dirname(options.configPath)
+    : options.project
+      ? join(process.cwd(), ".opencode")
+      : process.env.OPENCODE_CONFIG_DIR || join(homedir(), ".config", "opencode");
+  const pluginFilePath = join(configDir, "plugins", "CancerBroker.plugin.js");
+
+  if (!existsSync(pluginFilePath)) {
+    return {
+      changed: false,
+      pluginFilePath,
+      backupPath: null,
+    };
+  }
+
+  const originalText = readFileSync(pluginFilePath, "utf8");
+  const backupPath = backupExistingFile(pluginFilePath, originalText);
+  rmSync(pluginFilePath, { force: true });
+
+  return {
+    changed: true,
+    pluginFilePath,
+    backupPath,
+  };
+}
+
 async function downloadToolAsset(toolUrl) {
   if (toolUrl.startsWith("file://")) {
     return readFileSync(new URL(toolUrl), "utf8");

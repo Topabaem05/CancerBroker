@@ -106,8 +106,8 @@ function normalizeCommand(value) {
 
 function printUsage() {
   console.log(`Usage:
-  ${DISPLAY_COMMAND} add [--project] [--config <path>] [--package <name>] [--restart]
-  ${DISPLAY_COMMAND} remove [--project] [--config <path>] [--package <name>] [--restart]
+  ${DISPLAY_COMMAND} add [--project] [--config <path>] [--restart]
+  ${DISPLAY_COMMAND} remove [--project] [--config <path>] [--restart]
 
 Examples:
   ${DISPLAY_COMMAND} add
@@ -116,8 +116,8 @@ Examples:
   ${DISPLAY_COMMAND} add --config /tmp/opencode.json --restart
 
 Notes:
-  - add/remove only register or unregister the plugin in opencode.json.
-  - This wrapper delegates all config mutation to the installer package.
+  - add/remove install or remove the local custom tool file.
+  - This wrapper delegates all work to the installer package.
   - For a bare command in this repo shell, run: . ./scripts/dev-env.sh
   - --restart is optional and runs: opencode --restart`);
 }

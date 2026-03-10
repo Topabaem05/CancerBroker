@@ -1,31 +1,11 @@
 #!/usr/bin/env node
 
-import {
-  DEFAULT_PLUGIN_PACKAGE_NAME,
-  resolveTargetConfigPath,
-  uninstallPluginFromConfig,
-} from "./config-file.mjs";
-import { uninstallLocalPlugin } from "./plugin-file.mjs";
-import { uninstallLocalTool } from "./tool-file.mjs";
+import { resolveTargetConfigPath, uninstallPluginFromConfig } from "./config-file.mjs";
+import { cleanupLegacyPluginFile, uninstallLocalTool } from "./tool-file.mjs";
 
 export default async function runUninstall(argv = process.argv.slice(2)) {
   const flags = parseFlags(argv);
   const configPath = resolveTargetConfigPath(flags);
-  if (flags.packageName) {
-    const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
-    const result = uninstallPluginFromConfig(configPath, pluginName);
-
-    if (result.changed) {
-      console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result.configPath}`);
-      if (result.backupPath) {
-        console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
-      }
-    } else {
-      console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result.configPath}`);
-    }
-    console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
-    return;
-  }
 
   const toolResult = uninstallLocalTool(flags);
   if (toolResult.changed) {
@@ -37,7 +17,7 @@ export default async function runUninstall(argv = process.argv.slice(2)) {
     console.log(`[opencode-session-memory-sidebar] Local tool not present at ${toolResult.toolFilePath}`);
   }
 
-  const legacyPluginCleanup = uninstallLocalPlugin(flags);
+  const legacyPluginCleanup = cleanupLegacyPluginFile(flags);
   if (legacyPluginCleanup.changed) {
     console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup.pluginFilePath}`);
     if (legacyPluginCleanup.backupPath) {
@@ -45,7 +25,7 @@ export default async function runUninstall(argv = process.argv.slice(2)) {
     }
   }
 
-  const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+  const cleanupResult = uninstallPluginFromConfig(configPath);
   if (cleanupResult.changed) {
     console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult.configPath}`);
     if (cleanupResult.backupPath) {
@@ -65,7 +45,6 @@ function parseFlags(argv) {
   const flags = {
     project: false,
     configPath: undefined,
-    packageName: undefined,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -78,10 +57,6 @@ function parseFlags(argv) {
       flags.configPath = argv[index + 1];
       index += 1;
       continue;
-    }
-    if (value === "--package" && typeof argv[index + 1] === "string") {
-      flags.packageName = argv[index + 1];
-      index += 1;
     }
   }
 

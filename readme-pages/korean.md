@@ -61,8 +61,8 @@ cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --ma
 
 ## OpenCode Session Memory Tool
 
-- 한국어 플러그인 가이드는 별도 페이지로 분리했습니다.
-- [한국어 플러그인 가이드](korean-plugin-guide.md)
+- 한국어 도구 가이드는 별도 페이지로 분리했습니다.
+- [한국어 도구 가이드](korean-plugin-guide.md)
 
 ## Verification
 

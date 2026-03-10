@@ -1,7 +1,7 @@
 {
   "name": "opencode-session-memory-sidebar",
   "version": "0.1.0",
-  "description": "Session Memory tool for OpenCode",
+  "description": "Opencode subagent/background RAM optimizer tool",
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
@@ -24,7 +24,9 @@
   "keywords": [
     "opencode",
     "tool",
-    "memory"
+    "ram",
+    "cleanup",
+    "subagent"
   ],
   "license": "MIT"
 }

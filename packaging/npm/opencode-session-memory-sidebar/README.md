@@ -1,6 +1,6 @@
 # opencode-session-memory-sidebar
 
-OpenCode custom tool package that exposes session memory data through the supported tool system.
+OpenCode custom tool package for Opencode subagent/background RAM optimization.
 
 ## Install as a global tool
 
@@ -15,10 +15,11 @@ This installs `session_memory.js` into `~/.config/opencode/tools/` so OpenCode l
 
 ## What it does
 
-OpenCode 1.2.22 exposes a supported custom tool API, not a public plugin sidebar API. This package installs a custom tool named `session_memory` that returns:
+OpenCode 1.2.22 exposes a supported custom tool API. This package installs a custom tool named `session_memory` that returns:
 
-- live session counts
-- token totals for the current and other sessions
-- RAM attribution coverage and totals
+- live/stored session counts for the current project scope
+- RAM attribution for exact session processes when PID identity matches
+- Opencode-owned helper process counts and RAM totals
+- conservative cleanup results for stale duplicate helper processes
 
-Ask OpenCode to use the `session_memory` tool when you want the latest snapshot.
+Ask OpenCode to use the `session_memory` tool when you want the latest Opencode RAM/process snapshot.
