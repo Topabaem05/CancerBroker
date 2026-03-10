@@ -15,27 +15,6 @@ function resolveTargetConfigPath(options = {}) {
   const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path.join)((0, import_node_os.homedir)(), ".config", "opencode");
   return (0, import_node_path.join)(configDir, "opencode.json");
 }
-function installPluginIntoConfig(configPath, pluginName = DEFAULT_PLUGIN_PACKAGE_NAME) {
-  const originalText = readConfigText(configPath);
-  const parsed = parseJsoncObject(originalText, configPath);
-  const existingEntries = Array.isArray(parsed.plugin) ? parsed.plugin : [];
-  if (existingEntries.some((entry) => pluginEntryMatches(entry, pluginName))) {
-    return {
-      changed: false,
-      configPath,
-      backupPath: null,
-      pluginName
-    };
-  }
-  const nextEntries = [...existingEntries, pluginName];
-  return writeUpdatedConfig({
-    configPath,
-    originalText,
-    pluginPath: ["plugin"],
-    nextValue: nextEntries,
-    pluginName
-  });
-}
 function uninstallPluginFromConfig(configPath, pluginName = DEFAULT_PLUGIN_PACKAGE_NAME) {
   const originalText = readConfigText(configPath);
   const parsed = parseJsoncObject(originalText, configPath);
@@ -245,73 +224,31 @@ function atomicWrite(configPath, text) {
   (0, import_node_fs.renameSync)(tempPath, configPath);
 }
 
-// bin/plugin-file.mjs
+// bin/tool-file.mjs
 var import_node_fs2 = require("node:fs");
 var import_node_path2 = require("node:path");
 var import_node_os2 = require("node:os");
-var DEFAULT_PLUGIN_ASSET_NAME = "CancerBroker.plugin.js";
-var DEFAULT_PLUGIN_URL = process.env.OPENCODE_SESSION_MEMORY_PLUGIN_URL || `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_PLUGIN_ASSET_NAME}`;
-function resolvePluginDirectory(options = {}) {
-  if (options.configPath) {
-    return (0, import_node_path2.join)((0, import_node_path2.dirname)(options.configPath), "plugins");
-  }
-  if (options.project) {
-    return (0, import_node_path2.join)(process.cwd(), ".opencode", "plugins");
-  }
-  const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".config", "opencode");
-  return (0, import_node_path2.join)(configDir, "plugins");
-}
-function resolvePluginFilePath(options = {}) {
-  return (0, import_node_path2.join)(resolvePluginDirectory(options), DEFAULT_PLUGIN_ASSET_NAME);
-}
-function uninstallLocalPlugin(options = {}) {
-  const pluginFilePath = resolvePluginFilePath(options);
-  if (!(0, import_node_fs2.existsSync)(pluginFilePath)) {
-    return {
-      changed: false,
-      pluginFilePath,
-      backupPath: null
-    };
-  }
-  const originalText = (0, import_node_fs2.readFileSync)(pluginFilePath, "utf8");
-  const backupPath = backupExistingFile(pluginFilePath, originalText);
-  return {
-    changed: true,
-    pluginFilePath,
-    backupPath
-  };
-}
-function backupExistingFile(filePath, originalText) {
-  const backupPath = `${filePath}.bak.${Date.now()}`;
-  (0, import_node_fs2.writeFileSync)(backupPath, originalText, "utf8");
-  return backupPath;
-}
-
-// bin/tool-file.mjs
-var import_node_fs3 = require("node:fs");
-var import_node_path3 = require("node:path");
-var import_node_os3 = require("node:os");
 var DEFAULT_TOOL_ASSET_NAME = "session_memory.js";
 var DEFAULT_TOOL_URL = process.env.OPENCODE_SESSION_MEMORY_TOOL_URL || `https://github.com/Topabaem05/CancerBroker/releases/latest/download/${DEFAULT_TOOL_ASSET_NAME}`;
 function resolveToolDirectory(options = {}) {
   if (options.configPath) {
-    return (0, import_node_path3.join)((0, import_node_path3.dirname)(options.configPath), "tools");
+    return (0, import_node_path2.join)((0, import_node_path2.dirname)(options.configPath), "tools");
   }
   if (options.project) {
-    return (0, import_node_path3.join)(process.cwd(), ".opencode", "tools");
+    return (0, import_node_path2.join)(process.cwd(), ".opencode", "tools");
   }
-  const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path3.join)((0, import_node_os3.homedir)(), ".config", "opencode");
-  return (0, import_node_path3.join)(configDir, "tools");
+  const configDir = process.env.OPENCODE_CONFIG_DIR || (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".config", "opencode");
+  return (0, import_node_path2.join)(configDir, "tools");
 }
 function resolveToolFilePath(options = {}) {
-  return (0, import_node_path3.join)(resolveToolDirectory(options), DEFAULT_TOOL_ASSET_NAME);
+  return (0, import_node_path2.join)(resolveToolDirectory(options), DEFAULT_TOOL_ASSET_NAME);
 }
 async function installLocalTool(options = {}) {
   const toolUrl = options.toolUrl || DEFAULT_TOOL_URL;
   const toolFilePath = resolveToolFilePath(options);
   const nextText = await downloadToolAsset(toolUrl);
-  (0, import_node_fs3.mkdirSync)(resolveToolDirectory(options), { recursive: true });
-  const currentText = (0, import_node_fs3.existsSync)(toolFilePath) ? (0, import_node_fs3.readFileSync)(toolFilePath, "utf8") : null;
+  (0, import_node_fs2.mkdirSync)(resolveToolDirectory(options), { recursive: true });
+  const currentText = (0, import_node_fs2.existsSync)(toolFilePath) ? (0, import_node_fs2.readFileSync)(toolFilePath, "utf8") : null;
   if (currentText === nextText) {
     return {
       changed: false,
@@ -320,8 +257,8 @@ async function installLocalTool(options = {}) {
       backupPath: null
     };
   }
-  const backupPath = currentText === null ? null : backupExistingFile2(toolFilePath, currentText);
-  (0, import_node_fs3.writeFileSync)(toolFilePath, ensureTrailingEol2(nextText), "utf8");
+  const backupPath = currentText === null ? null : backupExistingFile(toolFilePath, currentText);
+  (0, import_node_fs2.writeFileSync)(toolFilePath, ensureTrailingEol2(nextText), "utf8");
   return {
     changed: true,
     toolFilePath,
@@ -331,28 +268,47 @@ async function installLocalTool(options = {}) {
 }
 function uninstallLocalTool(options = {}) {
   const toolFilePath = resolveToolFilePath(options);
-  if (!(0, import_node_fs3.existsSync)(toolFilePath)) {
+  if (!(0, import_node_fs2.existsSync)(toolFilePath)) {
     return {
       changed: false,
       toolFilePath,
       backupPath: null
     };
   }
-  const originalText = (0, import_node_fs3.readFileSync)(toolFilePath, "utf8");
-  const backupPath = backupExistingFile2(toolFilePath, originalText);
-  (0, import_node_fs3.rmSync)(toolFilePath, { force: true });
+  const originalText = (0, import_node_fs2.readFileSync)(toolFilePath, "utf8");
+  const backupPath = backupExistingFile(toolFilePath, originalText);
+  (0, import_node_fs2.rmSync)(toolFilePath, { force: true });
   return {
     changed: true,
     toolFilePath,
     backupPath
   };
 }
+function cleanupLegacyPluginFile(options = {}) {
+  const configDir = options.configPath ? (0, import_node_path2.dirname)(options.configPath) : options.project ? (0, import_node_path2.join)(process.cwd(), ".opencode") : process.env.OPENCODE_CONFIG_DIR || (0, import_node_path2.join)((0, import_node_os2.homedir)(), ".config", "opencode");
+  const pluginFilePath = (0, import_node_path2.join)(configDir, "plugins", "CancerBroker.plugin.js");
+  if (!(0, import_node_fs2.existsSync)(pluginFilePath)) {
+    return {
+      changed: false,
+      pluginFilePath,
+      backupPath: null
+    };
+  }
+  const originalText = (0, import_node_fs2.readFileSync)(pluginFilePath, "utf8");
+  const backupPath = backupExistingFile(pluginFilePath, originalText);
+  (0, import_node_fs2.rmSync)(pluginFilePath, { force: true });
+  return {
+    changed: true,
+    pluginFilePath,
+    backupPath
+  };
+}
 async function downloadToolAsset(toolUrl) {
   if (toolUrl.startsWith("file://")) {
-    return (0, import_node_fs3.readFileSync)(new URL(toolUrl), "utf8");
+    return (0, import_node_fs2.readFileSync)(new URL(toolUrl), "utf8");
   }
-  if (toolUrl.startsWith("/") && (0, import_node_fs3.existsSync)(toolUrl)) {
-    return (0, import_node_fs3.readFileSync)(toolUrl, "utf8");
+  if (toolUrl.startsWith("/") && (0, import_node_fs2.existsSync)(toolUrl)) {
+    return (0, import_node_fs2.readFileSync)(toolUrl, "utf8");
   }
   const response = await fetch(toolUrl);
   if (!response.ok) {
@@ -360,9 +316,9 @@ async function downloadToolAsset(toolUrl) {
   }
   return await response.text();
 }
-function backupExistingFile2(filePath, originalText) {
+function backupExistingFile(filePath, originalText) {
   const backupPath = `${filePath}.bak.${Date.now()}`;
-  (0, import_node_fs3.writeFileSync)(backupPath, originalText, "utf8");
+  (0, import_node_fs2.writeFileSync)(backupPath, originalText, "utf8");
   return backupPath;
 }
 function ensureTrailingEol2(text) {
@@ -381,20 +337,6 @@ async function main(argv) {
   const flags = parseFlags(parsedArgs);
   const configPath = resolveTargetConfigPath(flags);
   if (command === "uninstall") {
-    if (flags.packageName) {
-      const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
-      const result = uninstallPluginFromConfig(configPath, pluginName);
-      if (result.changed) {
-        console.log(`[opencode-session-memory-sidebar] Removed plugin from ${result.configPath}`);
-        if (result.backupPath) {
-          console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
-        }
-      } else {
-        console.log(`[opencode-session-memory-sidebar] Plugin not present in ${result.configPath}`);
-      }
-      console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
-      return;
-    }
     const toolResult2 = uninstallLocalTool(flags);
     if (toolResult2.changed) {
       console.log(`[opencode-session-memory-sidebar] Removed local tool at ${toolResult2.toolFilePath}`);
@@ -404,35 +346,20 @@ async function main(argv) {
     } else {
       console.log(`[opencode-session-memory-sidebar] Local tool not present at ${toolResult2.toolFilePath}`);
     }
-    const legacyPluginCleanup2 = uninstallLocalPlugin(flags);
+    const legacyPluginCleanup2 = cleanupLegacyPluginFile(flags);
     if (legacyPluginCleanup2.changed) {
       console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup2.pluginFilePath}`);
       if (legacyPluginCleanup2.backupPath) {
         console.log(`[opencode-session-memory-sidebar] Backup: ${legacyPluginCleanup2.backupPath}`);
       }
     }
-    const cleanupResult2 = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+    const cleanupResult2 = uninstallPluginFromConfig(configPath);
     if (cleanupResult2.changed) {
       console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult2.configPath}`);
       if (cleanupResult2.backupPath) {
         console.log(`[opencode-session-memory-sidebar] Backup: ${cleanupResult2.backupPath}`);
       }
     }
-    console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
-    return;
-  }
-  if (flags.packageName) {
-    const pluginName = flags.packageName || DEFAULT_PLUGIN_PACKAGE_NAME;
-    const result = installPluginIntoConfig(configPath, pluginName);
-    if (result.changed) {
-      console.log(`[opencode-session-memory-sidebar] Added plugin to ${result.configPath}`);
-      if (result.backupPath) {
-        console.log(`[opencode-session-memory-sidebar] Backup: ${result.backupPath}`);
-      }
-    } else {
-      console.log(`[opencode-session-memory-sidebar] Plugin already present in ${result.configPath}`);
-    }
-    console.log(`[opencode-session-memory-sidebar] Plugin package: ${result.pluginName}`);
     console.log("[opencode-session-memory-sidebar] Restart OpenCode: opencode --restart");
     return;
   }
@@ -445,14 +372,14 @@ async function main(argv) {
   } else {
     console.log(`[opencode-session-memory-sidebar] Local tool already up to date at ${toolResult.toolFilePath}`);
   }
-  const legacyPluginCleanup = uninstallLocalPlugin(flags);
+  const legacyPluginCleanup = cleanupLegacyPluginFile(flags);
   if (legacyPluginCleanup.changed) {
     console.log(`[opencode-session-memory-sidebar] Removed legacy plugin file at ${legacyPluginCleanup.pluginFilePath}`);
     if (legacyPluginCleanup.backupPath) {
       console.log(`[opencode-session-memory-sidebar] Backup: ${legacyPluginCleanup.backupPath}`);
     }
   }
-  const cleanupResult = uninstallPluginFromConfig(configPath, DEFAULT_PLUGIN_PACKAGE_NAME);
+  const cleanupResult = uninstallPluginFromConfig(configPath);
   if (cleanupResult.changed) {
     console.log(`[opencode-session-memory-sidebar] Removed npm plugin entry from ${cleanupResult.configPath}`);
     if (cleanupResult.backupPath) {
@@ -465,8 +392,7 @@ async function main(argv) {
 function parseFlags(argv) {
   const flags = {
     project: false,
-    configPath: void 0,
-    packageName: void 0
+    configPath: void 0
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -478,10 +404,6 @@ function parseFlags(argv) {
       flags.configPath = argv[index + 1];
       index += 1;
       continue;
-    }
-    if (value === "--package" && typeof argv[index + 1] === "string") {
-      flags.packageName = argv[index + 1];
-      index += 1;
     }
   }
   return flags;
