@@ -1754,7 +1754,11 @@ async function collectOpencodeHelperSummary(input = {}) {
   const sampleProcesses = input.sampleProcesses ?? sampleMacOsProcesses;
   const records = await sampleProcesses();
   const root = resolveCurrentOpencodeRoot(records, currentPid);
-  if (!root) {
+  const currentUid = typeof process.getuid === "function" ? process.getuid() : void 0;
+  const opencodeRoots = records.filter(
+    (record) => isOpencodeProcess(record) && (currentUid === void 0 || record.uid === currentUid)
+  );
+  if (!root && opencodeRoots.length === 0) {
     return {
       activeCount: 0,
       activeTotalBytes: 0,
@@ -1763,11 +1767,30 @@ async function collectOpencodeHelperSummary(input = {}) {
       cleanupSkippedCount: 0
     };
   }
-  const activeHelpers = records.filter(
-    (record) => record.pid !== root.pid && isTrackedHelperProcess(record) && belongsToOpencodeRoot(records, record, root)
-  );
+  const relevantDirectories = /* @__PURE__ */ new Set();
+  for (const candidate of [input.currentDirectory, ...root?.cwd ? [root.cwd] : [], ...opencodeRoots.map((row) => row.cwd)]) {
+    if (candidate) {
+      relevantDirectories.add(candidate);
+    }
+  }
+  const activeHelpers = records.filter((record) => {
+    if (!isTrackedHelperProcess(record)) {
+      return false;
+    }
+    if (currentUid !== void 0 && record.uid !== currentUid) {
+      return false;
+    }
+    if (root && record.pid === root.pid) {
+      return false;
+    }
+    return belongsToAnyOpencodeRoot(records, record, opencodeRoots) || isOrphanedRelevantHelper(records, record, {
+      relevantDirectories,
+      opencodeRoots
+    });
+  });
   const cleanupCandidates = collectCleanupCandidates(activeHelpers, {
-    staleThresholdSeconds: input.staleThresholdSeconds ?? DEFAULT_HELPER_STALE_THRESHOLD_SECONDS
+    staleThresholdSeconds: input.staleThresholdSeconds ?? DEFAULT_HELPER_STALE_THRESHOLD_SECONDS,
+    activeRoots: opencodeRoots
   });
   const cleanupResult = cleanupProcesses(cleanupCandidates, {
     signalProcess: input.signalProcess,
@@ -1792,7 +1815,7 @@ async function collectOpencodeHelperSummary(input = {}) {
 async function sampleMacOsProcesses() {
   const { stdout } = await execFileAsync(
     "ps",
-    ["-Ao", "pid=,ppid=,pgid=,state=,etime=,rss=,comm=,args="],
+    ["-Ao", "pid=,ppid=,pgid=,uid=,state=,etime=,rss=,comm=,args="],
     {
       encoding: "utf8",
       timeout: 2e3,
@@ -1806,32 +1829,39 @@ async function sampleMacOsProcesses() {
   ).catch((error) => {
     throw normalizeExecError(error);
   });
-  return stdout.split(/\r?\n/).map((line) => parseProcessRow(line)).filter((row) => row !== null);
+  const rows = stdout.split(/\r?\n/).map((line) => parseProcessRow(line)).filter((row) => row !== null);
+  const cwdByPid = await sampleProcessCwds(rows.map((row) => row.pid));
+  return rows.map((row) => ({
+    ...row,
+    cwd: cwdByPid.get(row.pid)
+  }));
 }
 function parseProcessRow(line) {
   const trimmed = line.trim();
   if (!trimmed) {
     return null;
   }
-  const match = /^([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+)\s+([0-9]+)\s+(\S+)\s+(.+)$/.exec(trimmed);
+  const match = /^([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+)\s+([0-9]+)\s+(\S+)\s+(.+)$/.exec(trimmed);
   if (!match) {
     return null;
   }
   const pid = Number.parseInt(match[1], 10);
   const ppid = Number.parseInt(match[2], 10);
   const pgid = Number.parseInt(match[3], 10);
-  const state = match[4];
-  const elapsedSeconds = parseElapsedSeconds(match[5]);
-  const rssKib = Number.parseInt(match[6], 10);
-  const command = match[7];
-  const args = match[8];
-  if (!Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid) || !Number.isInteger(elapsedSeconds) || !Number.isInteger(rssKib)) {
+  const uid = Number.parseInt(match[4], 10);
+  const state = match[5];
+  const elapsedSeconds = parseElapsedSeconds(match[6]);
+  const rssKib = Number.parseInt(match[7], 10);
+  const command = match[8];
+  const args = match[9];
+  if (!Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid) || !Number.isInteger(uid) || !Number.isInteger(elapsedSeconds) || !Number.isInteger(rssKib)) {
     return null;
   }
   return {
     pid,
     ppid,
     pgid,
+    uid,
     state,
     elapsedSeconds,
     rssBytes: rssKib * 1024,
@@ -1892,6 +1922,9 @@ function belongsToOpencodeRoot(records, record, root) {
   }
   return false;
 }
+function belongsToAnyOpencodeRoot(records, record, roots) {
+  return roots.some((root) => belongsToOpencodeRoot(records, record, root));
+}
 function isOpencodeProcess(record) {
   return basename(record.command) === "opencode" || record.args.startsWith("opencode ") || record.args === "opencode";
 }
@@ -1913,7 +1946,7 @@ function collectCleanupCandidates(records, input) {
     if (group.length < 2) {
       continue;
     }
-    const ordered = [...group].sort((left, right) => left.elapsedSeconds - right.elapsedSeconds);
+    const ordered = [...group].sort((left, right) => helperRank(left, input.activeRoots) - helperRank(right, input.activeRoots));
     const survivors = ordered.slice(0, 1);
     const stale = ordered.slice(survivors.length).filter((record) => record.elapsedSeconds >= input.staleThresholdSeconds);
     candidates.push(...stale.filter((record) => !record.state.startsWith("Z")));
@@ -1945,6 +1978,64 @@ function isAlive(pid) {
   } catch {
     return false;
   }
+}
+function helperRank(record, roots) {
+  const attached = roots.some((root) => record.pgid === root.pgid || record.ppid === root.pid);
+  const orphanPenalty = attached ? 0 : 1e6;
+  return orphanPenalty + record.elapsedSeconds;
+}
+function isOrphanedRelevantHelper(records, record, input) {
+  const cwd = record.cwd;
+  if (!cwd || input.relevantDirectories.size === 0) {
+    return false;
+  }
+  if (belongsToAnyOpencodeRoot(records, record, input.opencodeRoots)) {
+    return false;
+  }
+  return record.ppid === 1 && [...input.relevantDirectories].some((directory) => cwd === directory || cwd.startsWith(`${directory}/`));
+}
+async function sampleProcessCwds(pids) {
+  const output = /* @__PURE__ */ new Map();
+  if (pids.length === 0) {
+    return output;
+  }
+  const chunks = chunkPids(pids, 128);
+  for (const chunk of chunks) {
+    const pidArg = chunk.join(",");
+    const { stdout } = await execFileAsync(
+      "lsof",
+      ["-Fn", "-a", "-d", "cwd", "-p", pidArg],
+      {
+        encoding: "utf8",
+        timeout: 2e3,
+        maxBuffer: 512 * 1024,
+        env: {
+          ...process.env,
+          LC_ALL: "C",
+          LANG: "C"
+        }
+      }
+    ).catch(() => ({ stdout: "" }));
+    let currentPid = null;
+    for (const line of stdout.split(/\r?\n/)) {
+      if (line.startsWith("p")) {
+        const pid = Number.parseInt(line.slice(1), 10);
+        currentPid = Number.isInteger(pid) ? pid : null;
+        continue;
+      }
+      if (line.startsWith("n") && currentPid !== null) {
+        output.set(currentPid, line.slice(1));
+      }
+    }
+  }
+  return output;
+}
+function chunkPids(pids, size) {
+  const chunks = [];
+  for (let index = 0; index < pids.length; index += size) {
+    chunks.push([...pids.slice(index, index + size)]);
+  }
+  return chunks;
 }
 function describeHelper(record) {
   const combined = record.args.toLowerCase();
