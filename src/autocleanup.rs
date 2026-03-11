@@ -10,6 +10,7 @@ use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_art
 use crate::completion::{CompletionEvent, CompletionStateSnapshot};
 use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::{IpcError, receive_completion_events_once};
+use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -37,6 +38,7 @@ pub enum AutoCleanupDecision {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessCleanupResult {
     pub pid: u32,
+    pub resources: ProcessResourceReport,
     pub outcome: ProcessRemediationOutcome,
 }
 
@@ -252,6 +254,7 @@ impl AutoCleanupEngine {
 
             process_outcomes.push(ProcessCleanupResult {
                 pid: identity.pid,
+                resources: collect_process_resources(identity.pid),
                 outcome,
             });
         }
@@ -309,8 +312,30 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{infer_reconciliation_events, unix_timestamp_secs};
+    use super::{
+        AutoCleanupEngine, AutoCleanupSettings, infer_reconciliation_events, unix_timestamp_secs,
+    };
+    use crate::cleanup::CleanupPolicy;
     use crate::completion::CompletionSource;
+    use crate::completion::CompletionStateStore;
+    use crate::dispatch::CleanupDispatcher;
+    use crate::resolution::ResolvedCandidates;
+    use crate::safety::{OwnershipPolicy, ProcessIdentity};
+
+    fn sample_settings() -> AutoCleanupSettings {
+        AutoCleanupSettings {
+            cleanup_policy: CleanupPolicy {
+                allowlist: Vec::new(),
+                active_session_grace: Duration::from_secs(60),
+            },
+            ownership_policy: OwnershipPolicy {
+                expected_uid: u32::MAX,
+                required_command_markers: vec!["opencode".to_string()],
+                same_uid_only: true,
+            },
+            term_timeout: Duration::from_millis(1),
+        }
+    }
 
     #[test]
     fn infer_reconciliation_events_collects_unique_session_ids() {
@@ -355,5 +380,50 @@ mod tests {
             .expect("pre-epoch time should exist");
 
         assert_eq!(unix_timestamp_secs(before_epoch), 0);
+    }
+
+    #[test]
+    fn execute_cleanup_captures_open_resources_before_process_outcome() {
+        let engine = AutoCleanupEngine::new(
+            CleanupDispatcher::new(CompletionStateStore::new(60), Default::default()),
+            sample_settings(),
+        );
+
+        let result = engine
+            .execute_cleanup(
+                &crate::completion::CompletionEvent {
+                    event_id: "evt-1".to_string(),
+                    session_id: Some("ses_alpha".to_string()),
+                    parent_session_id: None,
+                    task_id: None,
+                    tool_name: None,
+                    completed_at: "0".to_string(),
+                    source: CompletionSource::Status,
+                },
+                ResolvedCandidates {
+                    processes: vec![ProcessIdentity {
+                        pid: std::process::id(),
+                        parent_pid: None,
+                        pgid: None,
+                        start_time_secs: 0,
+                        uid: Some(0),
+                        command: "python worker".to_string(),
+                        listening_ports: vec![],
+                    }],
+                    artifacts: Vec::new(),
+                    immediate_cleanup_eligible: true,
+                    deferred_to_reconciliation: false,
+                },
+                UNIX_EPOCH,
+            )
+            .expect("cleanup result");
+
+        assert_eq!(result.process_outcomes.len(), 1);
+        assert_eq!(result.process_outcomes[0].pid, std::process::id());
+        assert_eq!(result.process_outcomes[0].resources.pid, std::process::id());
+        assert_eq!(
+            result.process_outcomes[0].outcome,
+            crate::remediation::ProcessRemediationOutcome::Rejected("uid_mismatch")
+        );
     }
 }
