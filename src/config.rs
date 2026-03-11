@@ -131,6 +131,25 @@ impl Default for SafetyPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeakDetectionPolicy {
+    pub enabled: bool,
+    pub required_consecutive_growth_samples: usize,
+    pub minimum_rss_bytes: u64,
+    pub minimum_growth_bytes_per_sample: u64,
+}
+
+impl Default for LeakDetectionPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            required_consecutive_growth_samples: 3,
+            minimum_rss_bytes: 256 * 1024 * 1024,
+            minimum_growth_bytes_per_sample: 32 * 1024 * 1024,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IpcConfig {
     pub enabled: bool,
     pub socket_path: PathBuf,
@@ -192,6 +211,8 @@ pub struct GuardianConfig {
     #[serde(default)]
     pub safety: SafetyPolicy,
     #[serde(default)]
+    pub leak_detection: LeakDetectionPolicy,
+    #[serde(default)]
     pub ipc: IpcConfig,
     #[serde(default)]
     pub completion: CompletionCleanupPolicy,
@@ -207,6 +228,7 @@ impl Default for GuardianConfig {
             storage: StoragePolicy::default(),
             evidence_retention: EvidenceRetention::default(),
             safety: SafetyPolicy::default(),
+            leak_detection: LeakDetectionPolicy::default(),
             ipc: IpcConfig::default(),
             completion: CompletionCleanupPolicy::default(),
         }
@@ -249,7 +271,7 @@ mod tests {
     use super::{
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
         DEFAULT_COMPLETION_STATE_PATH, DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST,
-        GuardianConfig, Mode, load_config,
+        GuardianConfig, LeakDetectionPolicy, Mode, load_config,
     };
 
     #[test]
@@ -277,6 +299,7 @@ mod tests {
             config.completion.state_path.to_string_lossy(),
             DEFAULT_COMPLETION_STATE_PATH
         );
+        assert_eq!(config.leak_detection, LeakDetectionPolicy::default());
     }
 
     #[test]
@@ -344,5 +367,29 @@ mod tests {
 
         assert!(error.to_string().contains("config read error"));
         assert!(error.to_string().contains("missing.toml"));
+    }
+
+    #[test]
+    fn load_config_parses_leak_detection_overrides() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("guardian.toml");
+        fs::write(
+            &path,
+            r#"
+                [leak_detection]
+                enabled = true
+                required_consecutive_growth_samples = 4
+                minimum_rss_bytes = 1234
+                minimum_growth_bytes_per_sample = 5678
+            "#,
+        )
+        .expect("config file should be written");
+
+        let config = load_config(&path).expect("leak detection config should load");
+
+        assert!(config.leak_detection.enabled);
+        assert_eq!(config.leak_detection.required_consecutive_growth_samples, 4);
+        assert_eq!(config.leak_detection.minimum_rss_bytes, 1234);
+        assert_eq!(config.leak_detection.minimum_growth_bytes_per_sample, 5678);
     }
 }

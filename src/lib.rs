@@ -7,6 +7,7 @@ pub mod daemon;
 pub mod dispatch;
 pub mod evidence;
 pub mod ipc;
+pub mod leak;
 pub mod mcp;
 pub mod metrics;
 pub mod monitor;
