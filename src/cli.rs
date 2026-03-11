@@ -126,11 +126,14 @@ fn render_daemon_output(output: &crate::daemon::DaemonOutput, json: bool) -> Res
         Ok(serde_json::to_string(output)?)
     } else {
         Ok(format!(
-            "socket_path={} received_events={} processed_events={} reconciled_events={}",
+            "socket_path={} received_events={} processed_events={} reconciled_events={} leak_candidates={} leak_process_remediations={} leak_group_remediations={}",
             output.socket_path.display(),
             output.received_events,
             output.processed_events,
-            output.reconciled_events
+            output.reconciled_events,
+            output.leak_candidates,
+            output.leak_process_remediations,
+            output.leak_group_remediations
         ))
     }
 }
@@ -312,16 +315,19 @@ mod tests {
             received_events: 3,
             processed_events: 2,
             reconciled_events: 1,
+            leak_candidates: 4,
+            leak_process_remediations: 1,
+            leak_group_remediations: 1,
         };
 
         assert_eq!(
             render_daemon_output(&output, false).expect("human daemon output"),
-            "socket_path=/tmp/guardian.sock received_events=3 processed_events=2 reconciled_events=1"
+            "socket_path=/tmp/guardian.sock received_events=3 processed_events=2 reconciled_events=1 leak_candidates=4 leak_process_remediations=1 leak_group_remediations=1"
         );
         assert!(
             render_daemon_output(&output, true)
                 .expect("json daemon output")
-                .contains("\"processed_events\":2")
+                .contains("\"leak_candidates\":4")
         );
     }
 
