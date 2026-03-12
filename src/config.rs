@@ -6,11 +6,27 @@ use thiserror::Error;
 
 use crate::completion::CompletionSource;
 
+#[cfg(unix)]
 const DEFAULT_STORAGE_ALLOWLIST: &str = "~/.local/share/opencode/storage";
+#[cfg(windows)]
+const DEFAULT_STORAGE_ALLOWLIST: &str = "opencode\\storage";
+
 const DEFAULT_COMMAND_MARKERS: [&str; 2] = ["opencode", "openagent"];
+
+#[cfg(unix)]
 const DEFAULT_IPC_SOCKET_PATH: &str = "/tmp/cancerbroker.sock";
+#[cfg(windows)]
+const DEFAULT_IPC_SOCKET_PATH: &str = r"\\.\pipe\cancerbroker";
+
+#[cfg(unix)]
 const DEFAULT_COMPLETION_SOCKET_PATH: &str = "/tmp/cancerbroker-completion.sock";
+#[cfg(windows)]
+const DEFAULT_COMPLETION_SOCKET_PATH: &str = r"\\.\pipe\cancerbroker-completion";
+
+#[cfg(unix)]
 const DEFAULT_COMPLETION_STATE_PATH: &str = "/tmp/cancerbroker-completion-state.json";
+#[cfg(windows)]
+const DEFAULT_COMPLETION_STATE_PATH: &str = "cancerbroker-completion-state.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -189,9 +205,19 @@ impl Default for CompletionCleanupPolicy {
             cleanup_retry_interval_secs: 15,
             reconciliation_interval_secs: 60,
             daemon_socket_path: PathBuf::from(DEFAULT_COMPLETION_SOCKET_PATH),
-            state_path: PathBuf::from(DEFAULT_COMPLETION_STATE_PATH),
+            state_path: default_completion_state_path(),
         }
     }
+}
+
+#[cfg(unix)]
+fn default_completion_state_path() -> PathBuf {
+    PathBuf::from(DEFAULT_COMPLETION_STATE_PATH)
+}
+
+#[cfg(windows)]
+fn default_completion_state_path() -> PathBuf {
+    std::env::temp_dir().join(DEFAULT_COMPLETION_STATE_PATH)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,18 +347,24 @@ mod tests {
     #[test]
     fn load_config_parses_completion_overrides() {
         let dir = tempdir().expect("tempdir");
+        let custom_socket = dir.path().join("custom-completion.sock");
+        let custom_state = dir.path().join("custom-completion.json");
         let path = dir.path().join("guardian.toml");
         fs::write(
             &path,
-            r#"
+            format!(
+                r#"
                 [completion]
                 dedupe_ttl_secs = 42
                 cleanup_retry_interval_secs = 9
                 reconciliation_interval_secs = 12
-                daemon_socket_path = "/tmp/custom-completion.sock"
-                state_path = "/tmp/custom-completion.json"
+                daemon_socket_path = {socket}
+                state_path = {state}
                 enabled_sources = ["status", "tool_part_completed"]
             "#,
+                socket = toml::Value::String(custom_socket.to_string_lossy().into_owned()),
+                state = toml::Value::String(custom_state.to_string_lossy().into_owned()),
+            ),
         )
         .expect("config file should be written");
 
@@ -341,14 +373,8 @@ mod tests {
         assert_eq!(config.completion.dedupe_ttl_secs, 42);
         assert_eq!(config.completion.cleanup_retry_interval_secs, 9);
         assert_eq!(config.completion.reconciliation_interval_secs, 12);
-        assert_eq!(
-            config.completion.daemon_socket_path.to_string_lossy(),
-            "/tmp/custom-completion.sock"
-        );
-        assert_eq!(
-            config.completion.state_path.to_string_lossy(),
-            "/tmp/custom-completion.json"
-        );
+        assert_eq!(config.completion.daemon_socket_path, custom_socket);
+        assert_eq!(config.completion.state_path, custom_state);
         assert_eq!(
             config.completion.enabled_sources,
             vec![

@@ -5,10 +5,12 @@ use serde::Serialize;
 #[cfg(unix)]
 use std::path::PathBuf;
 use thiserror::Error;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::completion::{CompletionEvent, CompletionParseError, parse_completion_event};
+use crate::completion::CompletionEvent;
+#[cfg(any(unix, windows, test))]
+use crate::completion::{CompletionParseError, parse_completion_event};
 use crate::config::GuardianConfig;
 
 #[derive(Debug, Error)]
@@ -131,10 +133,84 @@ impl Drop for CompletionEventListener {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub struct CompletionEventListener {
+    pipe_name: std::ffi::OsString,
+}
+
+#[cfg(windows)]
+impl CompletionEventListener {
+    pub fn bind(socket_path: &Path) -> Result<Self, IpcError> {
+        Ok(Self {
+            pipe_name: socket_path.as_os_str().to_os_string(),
+        })
+    }
+
+    pub async fn receive_batch(
+        &self,
+        max_events: usize,
+        idle_timeout: Option<Duration>,
+    ) -> Result<Vec<CompletionEvent>, IpcError> {
+        use tokio::net::windows::named_pipe::ServerOptions;
+
+        let server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&self.pipe_name)
+            .map_err(|error| IpcError::Bind(error.to_string()))?;
+
+        let connected = match idle_timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, server.connect()).await {
+                Ok(Ok(())) => true,
+                Ok(Err(error)) => return Err(IpcError::Accept(error.to_string())),
+                Err(_) => false,
+            },
+            None => {
+                server
+                    .connect()
+                    .await
+                    .map_err(|error| IpcError::Accept(error.to_string()))?;
+                true
+            }
+        };
+
+        if !connected {
+            return Ok(Vec::new());
+        }
+
+        read_event_batch_pipe(server, max_events).await
+    }
+}
+
+#[cfg(windows)]
+async fn read_event_batch_pipe(
+    server: tokio::net::windows::named_pipe::NamedPipeServer,
+    max_events: usize,
+) -> Result<Vec<CompletionEvent>, IpcError> {
+    let mut lines = BufReader::new(server).lines();
+    let mut events = Vec::new();
+
+    while events.len() < max_events {
+        match lines
+            .next_line()
+            .await
+            .map_err(|error| IpcError::Read(error.to_string()))?
+        {
+            Some(line) => match parse_batch_line(&line) {
+                Ok(Some(event)) => events.push(event),
+                Ok(None) => {}
+                Err(error) => return Err(error),
+            },
+            None => break,
+        }
+    }
+
+    Ok(events)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub struct CompletionEventListener;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl CompletionEventListener {
     pub fn bind(_socket_path: &Path) -> Result<Self, IpcError> {
         Err(IpcError::UnsupportedPlatform)
@@ -177,7 +253,16 @@ pub async fn receive_completion_events_once(
     listener.receive_batch(max_events, None).await
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub async fn receive_completion_events_once(
+    socket_path: &Path,
+    max_events: usize,
+) -> Result<Vec<CompletionEvent>, IpcError> {
+    let listener = CompletionEventListener::bind(socket_path)?;
+    listener.receive_batch(max_events, None).await
+}
+
+#[cfg(not(any(unix, windows)))]
 pub async fn receive_completion_events_once(
     _socket_path: &Path,
     _max_events: usize,
@@ -185,10 +270,12 @@ pub async fn receive_completion_events_once(
     Err(IpcError::UnsupportedPlatform)
 }
 
+#[cfg(any(unix, windows, test))]
 fn map_parse_error(error: CompletionParseError) -> IpcError {
     IpcError::Parse(error.to_string())
 }
 
+#[cfg(any(unix, windows, test))]
 fn parse_batch_line(line: &str) -> Result<Option<CompletionEvent>, IpcError> {
     match parse_completion_event(line) {
         Ok(Some(event)) => Ok(Some(event)),

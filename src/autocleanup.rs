@@ -4,13 +4,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use thiserror::Error;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use tokio::io::AsyncWriteExt;
 
 use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_artifacts};
 use crate::completion::{CompletionEvent, CompletionStateSnapshot};
 use crate::dispatch::{CleanupDispatcher, DispatchDecision};
-use crate::ipc::{IpcError, receive_completion_events_once};
+use crate::ipc::IpcError;
+#[cfg(any(unix, windows))]
+use crate::ipc::receive_completion_events_once;
 use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::remediation::{
@@ -190,7 +192,49 @@ pub async fn run_daemon_once_with_cleanup(
     })
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub async fn run_daemon_once_with_cleanup(
+    socket_path: &Path,
+    engine: &mut AutoCleanupEngine,
+    max_events: usize,
+    payload: &[u8],
+) -> Result<DaemonCleanupOutput, AutoCleanupError> {
+    let pipe_name = socket_path.as_os_str().to_os_string();
+    let payload_bytes = payload.to_vec();
+    let writer = tokio::spawn(async move {
+        use tokio::net::windows::named_pipe::ClientOptions;
+
+        for _ in 0..50 {
+            match ClientOptions::new().open(&pipe_name) {
+                Ok(mut client) => {
+                    client.write_all(&payload_bytes).await?;
+                    return Ok::<(), std::io::Error>(());
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
+            }
+        }
+
+        Err(std::io::Error::other("failed to connect to daemon pipe"))
+    });
+
+    let events = receive_completion_events_once(socket_path, max_events).await?;
+    writer
+        .await
+        .map_err(|error| std::io::Error::other(error.to_string()))??;
+
+    for event in &events {
+        engine.handle_completion_event(event, SystemTime::now())?;
+    }
+
+    let reconciled_events = engine.run_reconciliation_pass(SystemTime::now())?.len();
+
+    Ok(DaemonCleanupOutput {
+        processed_events: events.len(),
+        reconciled_events,
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
 pub async fn run_daemon_once_with_cleanup(
     _socket_path: &Path,
     _engine: &mut AutoCleanupEngine,
