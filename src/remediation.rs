@@ -64,7 +64,7 @@ pub fn remediate_process(
         SafetyDecision::Allowed => {}
     }
 
-    remediate_process_unix(request)
+    platform_remediate_process(request)
 }
 
 pub fn remediate_process_group(
@@ -75,11 +75,11 @@ pub fn remediate_process_group(
         SafetyDecision::Allowed => {}
     }
 
-    remediate_process_group_unix(request)
+    platform_remediate_process_group(request)
 }
 
 #[cfg(unix)]
-fn remediate_process_unix(
+fn platform_remediate_process(
     request: &ProcessRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
     use nix::sys::signal::{Signal, kill};
@@ -102,11 +102,70 @@ fn remediate_process_unix(
     Ok(ProcessRemediationOutcome::TerminatedForced)
 }
 
-#[cfg(not(unix))]
-fn remediate_process_unix(
+#[cfg(windows)]
+fn platform_remediate_process(
+    request: &ProcessRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
+    };
+
+    let pid = request.identity.pid;
+
+    if !is_alive_windows(pid) {
+        return Ok(ProcessRemediationOutcome::AlreadyExited);
+    }
+
+    let handle = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, 0, pid) };
+    if handle == 0 {
+        return Ok(ProcessRemediationOutcome::AlreadyExited);
+    }
+
+    let timeout_ms = request.term_timeout.as_millis().min(u32::MAX as u128) as u32;
+    let wait_result = unsafe { WaitForSingleObject(handle, timeout_ms) };
+
+    if wait_result == WAIT_OBJECT_0 {
+        unsafe { CloseHandle(handle) };
+        return Ok(ProcessRemediationOutcome::TerminatedGracefully);
+    }
+
+    let success = unsafe { TerminateProcess(handle, 1) };
+    unsafe { CloseHandle(handle) };
+
+    if success == 0 {
+        return Err(signal_error("TerminateProcess failed"));
+    }
+
+    Ok(ProcessRemediationOutcome::TerminatedForced)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn platform_remediate_process(
     _request: &ProcessRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
     Err(RemediationError::UnsupportedPlatform)
+}
+
+#[cfg(windows)]
+fn is_alive_windows(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    const STILL_ACTIVE: u32 = 259;
+
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle == 0 {
+        return false;
+    }
+
+    let mut exit_code: u32 = 0;
+    let result = unsafe { GetExitCodeProcess(handle, &mut exit_code) };
+    unsafe { CloseHandle(handle) };
+
+    result != 0 && exit_code == STILL_ACTIVE
 }
 
 #[cfg(unix)]
@@ -146,7 +205,7 @@ fn wait_for_group_exit(pgid: nix::unistd::Pid, timeout: Duration) -> bool {
 }
 
 #[cfg(unix)]
-fn remediate_process_group_unix(
+fn platform_remediate_process_group(
     request: &ProcessGroupRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
     use nix::sys::signal::{Signal, killpg};
@@ -169,8 +228,19 @@ fn remediate_process_group_unix(
     Ok(ProcessRemediationOutcome::TerminatedForced)
 }
 
-#[cfg(not(unix))]
-fn remediate_process_group_unix(
+#[cfg(windows)]
+fn platform_remediate_process_group(
+    request: &ProcessGroupRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    platform_remediate_process(&ProcessRemediationRequest {
+        identity: request.leader_identity.clone(),
+        ownership_policy: request.ownership_policy.clone(),
+        term_timeout: request.term_timeout,
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn platform_remediate_process_group(
     _request: &ProcessGroupRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
     Err(RemediationError::UnsupportedPlatform)

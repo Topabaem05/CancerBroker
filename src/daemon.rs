@@ -309,7 +309,7 @@ fn persist_engine_state(
 #[cfg(test)]
 mod tests {
     use std::fs;
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     use std::process::Command;
     use std::time::Duration;
 
@@ -594,6 +594,47 @@ mod tests {
             safety: SafetyPolicy {
                 required_command_markers: vec!["sleep".to_string()],
                 same_uid_only: true,
+            },
+            leak_detection: LeakDetectionPolicy {
+                enabled: true,
+                required_consecutive_growth_samples: 2,
+                minimum_rss_bytes: 100,
+                minimum_growth_bytes_per_sample: 20,
+            },
+            completion: CompletionCleanupPolicy {
+                cleanup_retry_interval_secs: 1,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
+        let mut detector = LeakDetector::default();
+
+        for memory_bytes in [100_u64, 130, 160] {
+            let _ = run_leak_enforcement_with_inventory(
+                &config,
+                &mut detector,
+                &leak_test_inventory(child.id(), 42, memory_bytes),
+            )
+            .expect("leak enforcement should run");
+        }
+
+        let status = child.wait().expect("child should exit after remediation");
+        assert!(!status.success());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn run_leak_enforcement_with_inventory_terminates_leaking_process_in_enforce_mode() {
+        let mut child = Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .spawn()
+            .expect("ping process should spawn");
+
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            safety: SafetyPolicy {
+                required_command_markers: vec!["ping".to_string()],
+                same_uid_only: false,
             },
             leak_detection: LeakDetectionPolicy {
                 enabled: true,
