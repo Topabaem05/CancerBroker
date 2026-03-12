@@ -10,6 +10,9 @@ Choose a language page:
 - [한국어](korean.md)
 - [日本語](japanese.md)
 
-Notes:
+Each page includes:
 
-- All pages cover installation, usage, and verification commands.
+- Installation and Opencode setup
+- Quick start commands
+- Verification commands
+- Sandbox PID termination proof notes
