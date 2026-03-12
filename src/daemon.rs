@@ -633,7 +633,7 @@ mod tests {
         let config = GuardianConfig {
             mode: Mode::Enforce,
             safety: SafetyPolicy {
-                required_command_markers: vec!["ping".to_string()],
+                required_command_markers: vec!["sleep".to_string()],
                 same_uid_only: false,
             },
             leak_detection: LeakDetectionPolicy {

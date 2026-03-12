@@ -296,8 +296,8 @@ mod tests {
 
     use super::{
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
-        DEFAULT_COMPLETION_STATE_PATH, DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST,
-        GuardianConfig, LeakDetectionPolicy, Mode, load_config,
+        DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST, GuardianConfig, LeakDetectionPolicy,
+        Mode, default_completion_state_path, load_config,
     };
 
     #[test]
@@ -322,8 +322,8 @@ mod tests {
             DEFAULT_COMPLETION_SOCKET_PATH
         );
         assert_eq!(
-            config.completion.state_path.to_string_lossy(),
-            DEFAULT_COMPLETION_STATE_PATH
+            config.completion.state_path,
+            default_completion_state_path()
         );
         assert_eq!(config.leak_detection, LeakDetectionPolicy::default());
     }
