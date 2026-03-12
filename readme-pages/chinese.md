@@ -27,7 +27,7 @@ cancerbroker setup
 cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
-- 执行一次策略检查，并将证据写入 `.sisyphus/evidence`：
+- 执行一次策略检查，并将证据写入 `~/.local/share/cancerbroker/evidence`：
 
 ```bash
 cancerbroker --config fixtures/config/observe-only.toml run-once --json

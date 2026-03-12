@@ -27,7 +27,7 @@ cancerbroker setup
 cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
-- 정책 평가를 한 번 실행하고 `.sisyphus/evidence` 아래에 증거를 기록합니다:
+- 정책 평가를 한 번 실행하고 `~/.local/share/cancerbroker/evidence` 아래에 증거를 기록합니다:
 
 ```bash
 cancerbroker --config fixtures/config/observe-only.toml run-once --json

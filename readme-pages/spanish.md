@@ -27,7 +27,7 @@ cancerbroker setup
 cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
-- Ejecuta una evaluacion de politica y escribe evidencia en `.sisyphus/evidence`:
+- Ejecuta una evaluacion de politica y escribe evidencia en `~/.local/share/cancerbroker/evidence`:
 
 ```bash
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
