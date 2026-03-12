@@ -1,6 +1,6 @@
-use std::process::Command;
-
 use serde::Serialize;
+#[cfg(unix)]
+use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OpenResource {

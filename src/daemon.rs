@@ -309,6 +309,7 @@ fn persist_engine_state(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    #[cfg(unix)]
     use std::process::Command;
     use std::time::Duration;
 
