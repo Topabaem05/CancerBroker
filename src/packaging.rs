@@ -42,6 +42,24 @@ Restart=on-failure
 WantedBy=multi-user.target
 "#;
 
+pub fn render_windows_service_install(exec_path: &str, config_path: &str) -> String {
+    render_template(
+        WINDOWS_SERVICE_TEMPLATE,
+        &[
+            ("{{EXEC_PATH}}", exec_path),
+            ("{{CONFIG_PATH}}", config_path),
+        ],
+    )
+}
+
+const WINDOWS_SERVICE_TEMPLATE: &str = r#"sc.exe create cancerbroker ^
+    binPath= "{{EXEC_PATH}} --config {{CONFIG_PATH}} run-once --json" ^
+    start= auto ^
+    DisplayName= "cancerbroker sidecar"
+sc.exe description cancerbroker "Automated cleanup sidecar for opencode sessions"
+sc.exe start cancerbroker
+"#;
+
 const LAUNCHD_TEMPLATE: &str = r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
 <plist version=\"1.0\">
@@ -68,7 +86,9 @@ const LAUNCHD_TEMPLATE: &str = r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 
 #[cfg(test)]
 mod tests {
-    use super::{render_launchd_plist, render_systemd_unit, render_template};
+    use super::{
+        render_launchd_plist, render_systemd_unit, render_template, render_windows_service_install,
+    };
 
     #[test]
     fn render_template_replaces_all_placeholders() {
@@ -107,5 +127,19 @@ mod tests {
         assert!(rendered.contains("<string>/Users/test/.config/cancerbroker.toml</string>"));
         assert!(rendered.contains("<string>/tmp/cancerbroker.log</string>"));
         assert!(!rendered.contains("{{LOG_PATH}}"));
+    }
+
+    #[test]
+    fn render_windows_service_install_injects_exec_and_config_paths() {
+        let rendered = render_windows_service_install(
+            r"C:\Program Files\cancerbroker\cancerbroker.exe",
+            r"C:\ProgramData\cancerbroker\cancerbroker.toml",
+        );
+
+        assert!(rendered.contains(r"C:\Program Files\cancerbroker\cancerbroker.exe"));
+        assert!(rendered.contains(r"C:\ProgramData\cancerbroker\cancerbroker.toml"));
+        assert!(rendered.contains("sc.exe create cancerbroker"));
+        assert!(!rendered.contains("{{EXEC_PATH}}"));
+        assert!(!rendered.contains("{{CONFIG_PATH}}"));
     }
 }
