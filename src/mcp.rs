@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use color_eyre::eyre::{Result, WrapErr};
-use nix::unistd::geteuid;
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::transport::io::stdio;
@@ -19,6 +18,7 @@ use crate::evidence::default_evidence_dir;
 use crate::leak::{LeakCandidate, LeakDetector};
 use crate::monitor::process::{ProcessInventory, ProcessSample};
 use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
+use crate::platform::current_effective_uid;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 use crate::safety::OwnershipPolicy;
 
@@ -201,7 +201,7 @@ fn build_status_output(config: &GuardianConfig, config_path: Option<&Path>) -> S
 
 fn build_ownership_policy(config: &GuardianConfig) -> OwnershipPolicy {
     OwnershipPolicy {
-        expected_uid: geteuid().as_raw(),
+        expected_uid: current_effective_uid(),
         required_command_markers: config.safety.required_command_markers.clone(),
         same_uid_only: config.safety.same_uid_only,
     }
@@ -471,7 +471,6 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
-    use nix::unistd::geteuid;
     use rmcp::ServiceExt;
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -485,6 +484,7 @@ mod tests {
     use crate::config::{GuardianConfig, LeakDetectionPolicy};
     use crate::leak::LeakDetector;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
+    use crate::platform::current_effective_uid;
 
     fn sample_inventory() -> ProcessInventory {
         ProcessInventory::from_samples([
@@ -493,7 +493,7 @@ mod tests {
                 parent_pid: Some(1),
                 pgid: Some(10),
                 start_time_secs: 100,
-                uid: Some(geteuid().as_raw()),
+                uid: Some(current_effective_uid()),
                 memory_bytes: 128,
                 cpu_percent: 0.5,
                 command: "opencode ses_alpha worker".to_string(),
@@ -504,7 +504,7 @@ mod tests {
                 parent_pid: Some(1),
                 pgid: Some(20),
                 start_time_secs: 200,
-                uid: Some(geteuid().as_raw()),
+                uid: Some(current_effective_uid()),
                 memory_bytes: 512,
                 cpu_percent: 1.0,
                 command: "python helper.py".to_string(),
@@ -519,7 +519,7 @@ mod tests {
             parent_pid: Some(1),
             pgid: Some(10),
             start_time_secs: 100,
-            uid: Some(geteuid().as_raw()),
+            uid: Some(current_effective_uid()),
             memory_bytes,
             cpu_percent: 0.5,
             command: "opencode ses_alpha worker".to_string(),
@@ -628,7 +628,7 @@ mod tests {
             parent_pid: Some(1),
             pgid: Some(10),
             start_time_secs: 100,
-            uid: Some(geteuid().as_raw()),
+            uid: Some(current_effective_uid()),
             memory_bytes: 128,
             cpu_percent: 0.5,
             command: "opencode ses_alpha worker".to_string(),

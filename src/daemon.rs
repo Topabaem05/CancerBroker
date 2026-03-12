@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use nix::unistd::geteuid;
 use serde::Serialize;
 
 use crate::autocleanup::{AutoCleanupEngine, AutoCleanupSettings};
@@ -16,6 +15,7 @@ use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_on
 use crate::leak::LeakDetector;
 use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::scan_allowlisted_roots;
+use crate::platform::current_effective_uid;
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
     remediate_process, remediate_process_group,
@@ -78,7 +78,7 @@ fn execution_error(error: impl ToString) -> IpcError {
 
 fn build_ownership_policy(config: &GuardianConfig) -> OwnershipPolicy {
     OwnershipPolicy {
-        expected_uid: geteuid().as_raw(),
+        expected_uid: current_effective_uid(),
         required_command_markers: config.safety.required_command_markers.clone(),
         same_uid_only: config.safety.same_uid_only,
     }
@@ -312,7 +312,6 @@ mod tests {
     use std::process::Command;
     use std::time::Duration;
 
-    use nix::unistd::geteuid;
     use tempfile::tempdir;
 
     use super::{
@@ -330,6 +329,7 @@ mod tests {
     };
     use crate::leak::LeakDetector;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
+    use crate::platform::current_effective_uid;
     use crate::remediation::ProcessRemediationOutcome;
 
     fn status_event(session_id: &str, source: CompletionSource) -> CompletionEvent {
@@ -523,7 +523,7 @@ mod tests {
             parent_pid: Some(1),
             pgid: None,
             start_time_secs,
-            uid: Some(geteuid().as_raw()),
+            uid: Some(current_effective_uid()),
             memory_bytes,
             cpu_percent: 0.5,
             command: "sleep leak".to_string(),
@@ -580,6 +580,7 @@ mod tests {
         assert_eq!(output.leak_group_remediations, 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn run_leak_enforcement_with_inventory_terminates_leaking_process_in_enforce_mode() {
         let mut child = Command::new("sleep")

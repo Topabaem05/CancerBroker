@@ -32,13 +32,7 @@ fn normalize_children(children_by_parent: &mut BTreeMap<u32, Vec<u32>>) {
     }
 }
 
-fn get_pgid(pid: u32) -> Option<u32> {
-    use nix::unistd::{Pid, getpgid};
-
-    getpgid(Some(Pid::from_raw(pid as i32)))
-        .ok()
-        .map(|pgid| pgid.as_raw() as u32)
-}
+use crate::platform::process_group_id;
 
 fn get_listening_ports(pid: u32) -> Vec<u16> {
     use netstat2::{
@@ -160,7 +154,7 @@ impl ProcessInventory {
             };
 
             let pid_u32 = process.pid().as_u32();
-            let pgid = get_pgid(pid_u32);
+            let pgid = process_group_id(pid_u32);
             let listening_ports = get_listening_ports(pid_u32);
 
             ProcessSample {
@@ -168,7 +162,7 @@ impl ProcessInventory {
                 parent_pid: process.parent().map(|pid| pid.as_u32()),
                 pgid,
                 start_time_secs: process.start_time(),
-                uid: process.user_id().map(|uid| **uid),
+                uid: current_process_uid(process),
                 memory_bytes: process.memory(),
                 cpu_percent: process.cpu_usage(),
                 command,
@@ -176,6 +170,16 @@ impl ProcessInventory {
             }
         }))
     }
+}
+
+#[cfg(unix)]
+fn current_process_uid(process: &sysinfo::Process) -> Option<u32> {
+    process.user_id().map(|uid| **uid)
+}
+
+#[cfg(not(unix))]
+fn current_process_uid(_process: &sysinfo::Process) -> Option<u32> {
+    None
 }
 
 #[cfg(test)]

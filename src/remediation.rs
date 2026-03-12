@@ -181,6 +181,7 @@ mod tests {
         ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
         remediate_process, remediate_process_group, signal_error,
     };
+    use crate::platform::current_effective_uid;
     use crate::safety::{OwnershipPolicy, ProcessIdentity};
 
     fn sample_identity() -> ProcessIdentity {
@@ -189,7 +190,7 @@ mod tests {
             parent_pid: None,
             pgid: None,
             start_time_secs: 0,
-            uid: Some(nix::unistd::geteuid().as_raw()),
+            uid: Some(current_effective_uid()),
             command: "opencode worker".to_string(),
             listening_ports: vec![],
         }
@@ -197,7 +198,7 @@ mod tests {
 
     fn sample_policy() -> OwnershipPolicy {
         OwnershipPolicy {
-            expected_uid: nix::unistd::geteuid().as_raw(),
+            expected_uid: current_effective_uid(),
             required_command_markers: vec!["opencode".to_string()],
             same_uid_only: true,
         }
