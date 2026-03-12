@@ -471,6 +471,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
+    use nix::unistd::geteuid;
     use rmcp::ServiceExt;
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -492,7 +493,7 @@ mod tests {
                 parent_pid: Some(1),
                 pgid: Some(10),
                 start_time_secs: 100,
-                uid: Some(501),
+                uid: Some(geteuid().as_raw()),
                 memory_bytes: 128,
                 cpu_percent: 0.5,
                 command: "opencode ses_alpha worker".to_string(),
@@ -503,7 +504,7 @@ mod tests {
                 parent_pid: Some(1),
                 pgid: Some(20),
                 start_time_secs: 200,
-                uid: Some(501),
+                uid: Some(geteuid().as_raw()),
                 memory_bytes: 512,
                 cpu_percent: 1.0,
                 command: "python helper.py".to_string(),
@@ -518,7 +519,7 @@ mod tests {
             parent_pid: Some(1),
             pgid: Some(10),
             start_time_secs: 100,
-            uid: Some(501),
+            uid: Some(geteuid().as_raw()),
             memory_bytes,
             cpu_percent: 0.5,
             command: "opencode ses_alpha worker".to_string(),
@@ -627,7 +628,7 @@ mod tests {
             parent_pid: Some(1),
             pgid: Some(10),
             start_time_secs: 100,
-            uid: Some(501),
+            uid: Some(geteuid().as_raw()),
             memory_bytes: 128,
             cpu_percent: 0.5,
             command: "opencode ses_alpha worker".to_string(),
