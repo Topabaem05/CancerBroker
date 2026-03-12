@@ -1,8 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
+#[cfg(unix)]
+use std::path::PathBuf;
 use thiserror::Error;
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::completion::{CompletionEvent, CompletionParseError, parse_completion_event};
@@ -196,9 +199,13 @@ fn parse_batch_line(line: &str) -> Result<Option<CompletionEvent>, IpcError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::time::Duration;
 
-    use super::{CompletionEventListener, IpcError, handle_read_only_request};
+    #[cfg(unix)]
+    use super::CompletionEventListener;
+    use super::{IpcError, handle_read_only_request};
+    #[cfg(unix)]
     use crate::completion::CompletionSource;
     use crate::config::{GuardianConfig, IpcConfig, Mode};
 

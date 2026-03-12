@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use thiserror::Error;
+#[cfg(unix)]
 use tokio::io::AsyncWriteExt;
 
 use crate::cleanup::{CleanupOutcome, CleanupPolicy, remove_stale_allowlisted_artifacts};
@@ -149,6 +150,7 @@ pub fn run_reconciliation(
     Ok(outcomes)
 }
 
+#[cfg(unix)]
 pub async fn run_daemon_once_with_cleanup(
     socket_path: &Path,
     engine: &mut AutoCleanupEngine,
@@ -186,6 +188,16 @@ pub async fn run_daemon_once_with_cleanup(
         processed_events: events.len(),
         reconciled_events,
     })
+}
+
+#[cfg(not(unix))]
+pub async fn run_daemon_once_with_cleanup(
+    _socket_path: &Path,
+    _engine: &mut AutoCleanupEngine,
+    _max_events: usize,
+    _payload: &[u8],
+) -> Result<DaemonCleanupOutput, AutoCleanupError> {
+    Err(IpcError::UnsupportedPlatform.into())
 }
 
 pub fn infer_reconciliation_events(
