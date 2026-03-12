@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::config::load_config;
 use crate::daemon::{DaemonRunOptions, run_daemon_loop};
+use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
@@ -31,8 +32,8 @@ pub enum Command {
     RunOnce {
         #[arg(long)]
         json: bool,
-        #[arg(long, default_value = ".sisyphus/evidence")]
-        evidence_dir: PathBuf,
+        #[arg(long)]
+        evidence_dir: Option<PathBuf>,
     },
     Daemon {
         #[arg(long)]
@@ -97,6 +98,10 @@ fn build_runtime_input(
 
 fn require_config_path(config: Option<PathBuf>) -> Result<PathBuf> {
     config.ok_or_else(|| eyre!("--config is required for this command"))
+}
+
+fn resolve_evidence_dir(evidence_dir: Option<PathBuf>) -> PathBuf {
+    evidence_dir.unwrap_or_else(default_evidence_dir)
 }
 
 fn render_runtime_output(output: &RuntimeOutcome, json: bool) -> Result<String> {
@@ -167,7 +172,11 @@ pub fn run(cli: Cli) -> Result<()> {
             let config = load_config(&config_path).wrap_err("config load failure")?;
             let output = run_once(
                 &config,
-                build_runtime_input(&config, evidence_dir, SystemTime::now()),
+                build_runtime_input(
+                    &config,
+                    resolve_evidence_dir(evidence_dir),
+                    SystemTime::now(),
+                ),
             );
             println!("{}", render_runtime_output(&output, json)?);
         }
@@ -212,7 +221,7 @@ mod tests {
     use super::{
         Cli, Command, build_daemon_run_options, build_runtime_input, build_status_output,
         default_signal_windows, render_daemon_output, render_runtime_output, render_setup_output,
-        render_status_output, require_config_path,
+        render_status_output, require_config_path, resolve_evidence_dir,
     };
     use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
     use crate::daemon::DaemonOutput;
@@ -339,6 +348,13 @@ mod tests {
     }
 
     #[test]
+    fn resolve_evidence_dir_uses_default_when_missing() {
+        let resolved = resolve_evidence_dir(None);
+
+        assert!(!resolved.as_os_str().is_empty());
+    }
+
+    #[test]
     fn setup_output_renders_backup_when_present() {
         let output = render_setup_output(&SetupOutcome {
             config_path: PathBuf::from("/tmp/opencode.json"),
@@ -370,7 +386,7 @@ mod tests {
         match cli.command {
             Command::RunOnce { json, evidence_dir } => {
                 assert!(json);
-                assert_eq!(evidence_dir, PathBuf::from("/tmp/evidence"));
+                assert_eq!(evidence_dir, Some(PathBuf::from("/tmp/evidence")));
             }
             _ => panic!("expected run-once command"),
         }

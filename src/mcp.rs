@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::default_signal_windows;
 use crate::config::{GuardianConfig, load_config};
+use crate::evidence::default_evidence_dir;
 use crate::leak::{LeakCandidate, LeakDetector};
 use crate::monitor::process::{ProcessInventory, ProcessSample};
 use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
@@ -23,7 +24,6 @@ use crate::safety::OwnershipPolicy;
 
 const DEFAULT_CONFIG_ENV: &str = "CANCERBROKER_CONFIG";
 const DEFAULT_CONFIG_RELATIVE_PATH: &str = ".config/cancerbroker/config.toml";
-const DEFAULT_EVIDENCE_DIR: &str = ".sisyphus/evidence";
 
 #[derive(Debug, Clone)]
 struct LoadedServerConfig {
@@ -182,10 +182,6 @@ fn matches_command_markers(command: &str, required_command_markers: &[String]) -
 
 fn serialize_tool_output<T: Serialize>(output: &T) -> Result<String, String> {
     serde_json::to_string_pretty(output).map_err(|error| error.to_string())
-}
-
-fn default_evidence_dir() -> PathBuf {
-    PathBuf::from(DEFAULT_EVIDENCE_DIR)
 }
 
 fn build_status_output(config: &GuardianConfig, config_path: Option<&Path>) -> StatusToolOutput {

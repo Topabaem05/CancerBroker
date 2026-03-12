@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,6 +61,19 @@ pub enum EvidenceError {
     },
     #[error("evidence serialization error: {source}")]
     Serialize { source: serde_json::Error },
+}
+
+const DEFAULT_EVIDENCE_HOME_RELATIVE_PATH: &str = ".local/share/cancerbroker/evidence";
+const DEFAULT_EVIDENCE_FALLBACK_PATH: &str = ".cancerbroker/evidence";
+
+fn build_default_evidence_dir(home: Option<&Path>) -> PathBuf {
+    home.map(|path| path.join(DEFAULT_EVIDENCE_HOME_RELATIVE_PATH))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_EVIDENCE_FALLBACK_PATH))
+}
+
+pub fn default_evidence_dir() -> PathBuf {
+    let home = env::var_os("HOME").map(PathBuf::from);
+    build_default_evidence_dir(home.as_deref())
 }
 
 fn unix_timestamp_secs(now: SystemTime) -> u64 {
@@ -188,14 +202,16 @@ fn pre_action_file_name(evidence: &PreActionEvidence) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{Duration, UNIX_EPOCH};
 
     use tempfile::tempdir;
 
     use super::{
         EvidenceInput, EvidenceStore, PreActionEvidence, SignalSnapshot,
-        build_evidence_write_failure, build_evidence_write_success, build_pre_action_evidence,
-        evidence_exists, persist_pre_action_with_fallback, pre_action_file_name, redacted_record,
+        build_default_evidence_dir, build_evidence_write_failure, build_evidence_write_success,
+        build_pre_action_evidence, default_evidence_dir, evidence_exists,
+        persist_pre_action_with_fallback, pre_action_file_name, redacted_record,
         unix_timestamp_secs,
     };
 
@@ -274,6 +290,19 @@ mod tests {
             pre_action_file_name(&evidence),
             "evidence-0-cli_target_alpha.json"
         );
+    }
+
+    #[test]
+    fn build_default_evidence_dir_prefers_user_data_directory() {
+        assert_eq!(
+            build_default_evidence_dir(Some(PathBuf::from("/tmp/home").as_path())),
+            PathBuf::from("/tmp/home/.local/share/cancerbroker/evidence")
+        );
+    }
+
+    #[test]
+    fn default_evidence_dir_returns_non_empty_path() {
+        assert!(!default_evidence_dir().as_os_str().is_empty());
     }
 
     #[test]

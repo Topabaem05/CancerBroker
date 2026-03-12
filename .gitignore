@@ -2,6 +2,5 @@ target/
 tests/
 .DS_Store
 .sisyphus/drafts/
-.sisyphus/evidence/
 .sisyphus/notepads/
 .sisyphus/plans/opencode-sidebar-memory-monitor.md
