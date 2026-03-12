@@ -7,12 +7,16 @@ Languages: [English](english.md) | [中文](chinese.md) | [Español](spanish.md)
 
 ## Installation
 
-- Clone the repository and build the binary:
+- Install from Git:
 
 ```bash
-git clone https://github.com/Topabaem05/CancerBroker.git
-cd CancerBroker
-cargo build --release
+cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+## Opencode Setup
+
+```bash
+cancerbroker setup
 ```
 
 ## Usage
@@ -20,20 +24,31 @@ cargo build --release
 - Check the current mode:
 
 ```bash
-cargo run -- --config fixtures/config/observe-only.toml status --json
+cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
 - Run one policy evaluation and write evidence under `.sisyphus/evidence`:
 
 ```bash
-cargo run -- --config fixtures/config/observe-only.toml run-once --json
+cancerbroker --config fixtures/config/observe-only.toml run-once --json
 ```
 
 - Start the long-running completion cleanup daemon:
 
 ```bash
-cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
 ```
+
+## Sandbox PID Termination Proof
+
+```bash
+cargo test --workspace run_leak_enforcement_with_inventory_terminates_leaking_process_in_enforce_mode -- --nocapture
+```
+
+Signal interpretation:
+
+- `signal: 15` -> terminated by `SIGTERM`
+- `signal: 9` -> escalated to `SIGKILL`
 
 ## Verification
 
@@ -41,4 +56,5 @@ cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --ma
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
+cargo build --workspace
 ```

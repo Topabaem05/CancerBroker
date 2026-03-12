@@ -7,12 +7,16 @@ Languages: [English](english.md) | [中文](chinese.md) | [Español](spanish.md)
 
 ## Installation
 
-- 克隆仓库并构建二进制文件：
+- 通过 Git 安装：
 
 ```bash
-git clone https://github.com/Topabaem05/CancerBroker.git
-cd CancerBroker
-cargo build --release
+cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+## Opencode 设置
+
+```bash
+cancerbroker setup
 ```
 
 ## Usage
@@ -20,20 +24,31 @@ cargo build --release
 - 检查当前运行模式：
 
 ```bash
-cargo run -- --config fixtures/config/observe-only.toml status --json
+cancerbroker --config fixtures/config/observe-only.toml status --json
 ```
 
 - 执行一次策略检查，并将证据写入 `.sisyphus/evidence`：
 
 ```bash
-cargo run -- --config fixtures/config/observe-only.toml run-once --json
+cancerbroker --config fixtures/config/observe-only.toml run-once --json
 ```
 
 - 启动长期运行的 completion cleanup daemon：
 
 ```bash
-cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
 ```
+
+## 沙盒 PID 终止验证
+
+```bash
+cargo test --workspace run_leak_enforcement_with_inventory_terminates_leaking_process_in_enforce_mode -- --nocapture
+```
+
+信号说明：
+
+- `signal: 15` -> 通过 `SIGTERM` 结束
+- `signal: 9` -> 在 `SIGTERM` 后升级为 `SIGKILL`
 
 ## Verification
 
@@ -41,4 +56,5 @@ cargo run -- --config fixtures/config/completion-cleanup.toml daemon --json --ma
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
+cargo build --workspace
 ```
