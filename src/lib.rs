@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod metrics;
 pub mod monitor;
 pub mod packaging;
+pub mod platform;
 pub mod policy;
 pub mod remediation;
 pub mod resolution;
