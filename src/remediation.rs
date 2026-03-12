@@ -118,7 +118,7 @@ fn platform_remediate_process(
     }
 
     let handle = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, 0, pid) };
-    if handle == 0 {
+    if handle.is_null() {
         return Ok(ProcessRemediationOutcome::AlreadyExited);
     }
 
@@ -157,7 +157,7 @@ fn is_alive_windows(pid: u32) -> bool {
     const STILL_ACTIVE: u32 = 259;
 
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-    if handle == 0 {
+    if handle.is_null() {
         return false;
     }
 
