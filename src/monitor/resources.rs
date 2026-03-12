@@ -32,6 +32,7 @@ impl ProcessResourceReport {
     }
 }
 
+#[cfg(any(unix, test))]
 fn finalize_resource(report: &mut ProcessResourceReport, resource: OpenResource) {
     let classification = if resource.target.starts_with('/') {
         Some(&mut report.open_files)
@@ -50,6 +51,7 @@ fn finalize_resource(report: &mut ProcessResourceReport, resource: OpenResource)
     report.resources.push(resource);
 }
 
+#[cfg(any(unix, test))]
 fn parse_lsof_field_output(output: &str, pid: u32) -> ProcessResourceReport {
     let mut report = ProcessResourceReport::empty(pid);
     let mut current_descriptor: Option<String> = None;
