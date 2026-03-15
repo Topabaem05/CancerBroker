@@ -91,10 +91,79 @@ fn ensure_mcp_object(root: &mut Value) -> Result<&mut Map<String, Value>, SetupE
     mcp.as_object_mut().ok_or(SetupError::InvalidMcpSection)
 }
 
+fn ensure_lsp_object(root: &mut Value) -> Result<&mut Map<String, Value>, SetupError> {
+    let root = ensure_object(root)?;
+    let lsp = root
+        .entry("lsp".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    lsp.as_object_mut().ok_or(SetupError::InvalidMcpSection)
+}
+
+fn rust_low_memory_initialization() -> Value {
+    json!({
+        "cachePriming": {
+            "enable": false
+        },
+        "cargo": {
+            "allTargets": false,
+            "buildScripts": {
+                "enable": false
+            }
+        },
+        "check": {
+            "allTargets": false,
+            "workspace": false
+        },
+        "lru": {
+            "capacity": 32
+        },
+        "numThreads": 1,
+        "procMacro": {
+            "enable": false,
+            "processes": 1
+        }
+    })
+}
+
+fn merge_defaults(target: &mut Map<String, Value>, defaults: &Map<String, Value>) {
+    for (key, default_value) in defaults {
+        match (target.get_mut(key), default_value) {
+            (Some(Value::Object(target_child)), Value::Object(default_child)) => {
+                merge_defaults(target_child, default_child);
+            }
+            (None, _) => {
+                target.insert(key.clone(), default_value.clone());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn configure_rust_analyzer_low_memory(root: &mut Value) -> Result<(), SetupError> {
+    let lsp = ensure_lsp_object(root)?;
+    let rust = lsp
+        .entry("rust".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or(SetupError::InvalidMcpSection)?;
+    let initialization = rust
+        .entry("initialization".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or(SetupError::InvalidMcpSection)?;
+
+    let Value::Object(defaults) = rust_low_memory_initialization() else {
+        unreachable!("low-memory initialization must be an object");
+    };
+    merge_defaults(initialization, &defaults);
+    Ok(())
+}
+
 fn update_opencode_config(root: &mut Value, install: bool) -> Result<(), SetupError> {
     let mcp = ensure_mcp_object(root)?;
     if install {
         mcp.insert(CANCERBROKER_MCP_KEY.to_string(), cancerbroker_mcp_entry());
+        configure_rust_analyzer_low_memory(root)?;
     } else {
         mcp.remove(CANCERBROKER_MCP_KEY);
     }
@@ -207,6 +276,51 @@ mod tests {
 
         assert_eq!(root["mcp"][CANCERBROKER_MCP_KEY], cancerbroker_mcp_entry());
         assert_eq!(root["mcp"]["sequential-thinking"]["type"], "local");
+        assert_eq!(
+            root["lsp"]["rust"]["initialization"]["cachePriming"]["enable"],
+            false
+        );
+        assert_eq!(
+            root["lsp"]["rust"]["initialization"]["cargo"]["allTargets"],
+            false
+        );
+        assert_eq!(root["lsp"]["rust"]["initialization"]["lru"]["capacity"], 32);
+        assert_eq!(root["lsp"]["rust"]["initialization"]["numThreads"], 1);
+        assert_eq!(
+            root["lsp"]["rust"]["initialization"]["procMacro"]["enable"],
+            false
+        );
+    }
+
+    #[test]
+    fn update_opencode_config_preserves_existing_rust_lsp_overrides() {
+        let mut root = json!({
+            "mcp": {},
+            "lsp": {
+                "rust": {
+                    "initialization": {
+                        "lru": {
+                            "capacity": 16
+                        },
+                        "procMacro": {
+                            "enable": true
+                        }
+                    }
+                }
+            }
+        });
+
+        update_opencode_config(&mut root, true).expect("setup update");
+
+        assert_eq!(root["lsp"]["rust"]["initialization"]["lru"]["capacity"], 16);
+        assert_eq!(
+            root["lsp"]["rust"]["initialization"]["procMacro"]["enable"],
+            true
+        );
+        assert_eq!(
+            root["lsp"]["rust"]["initialization"]["cachePriming"]["enable"],
+            false
+        );
     }
 
     #[test]
