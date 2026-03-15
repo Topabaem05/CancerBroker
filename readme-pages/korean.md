@@ -33,7 +33,7 @@ cancerbroker --help
 cancerbroker setup
 ```
 
-이제 이 명령은 TTY에서 최소한의 line-based setup wizard를 실행한 뒤 다음을 수행합니다.
+이제 이 명령은 TTY에서 인터랙티브 터미널 setup wizard를 실행한 뒤 다음을 수행합니다.
 
 - `cancerbroker mcp`를 사용해 CancerBroker를 로컬 Opencode MCP 서버로 등록
 - rust-analyzer 메모리 가드 설정을 `~/.config/cancerbroker/config.toml`에 기록
@@ -84,33 +84,13 @@ cancerbroker setup --uninstall --non-interactive
 cancerbroker setup
 ```
 
-예시 입력 흐름:
+대표적인 wizard 흐름:
 
 ```text
-CancerBroker setup will:
-- register the local MCP server in OpenCode
-- configure the rust-analyzer memory guard for this machine
-Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
-
-Enable rust-analyzer memory protection? [Y/n]
-  When enabled, CancerBroker watches rust-analyzer memory and can clean it up after repeated over-limit samples.
->
-
-Memory cap in GB [6]
-  CancerBroker starts counting rust-analyzer as over the limit after it stays above this amount of RAM.
->
-
-Consecutive over-limit samples before action [3]
-  This avoids reacting to a single short memory spike.
->
-
-Startup grace in seconds [300]
-  rust-analyzer often spikes during initial indexing, so counting starts after this delay.
->
-
-Cooldown after remediation in seconds [1800]
-  This prevents repeated remediation loops after rust-analyzer restarts.
->
+Header: 감지된 RAM, 현재 단계, setup 대상
+Body: 현재 설정값, 설명, 수정 가능한 값 또는 토글
+Summary: enabled 여부, memory cap, sample 수, startup grace, cooldown
+Controls: Enter 확인, Up 이전 단계, 숫자 입력으로 값 수정, Esc 취소
 ```
 
 참고:

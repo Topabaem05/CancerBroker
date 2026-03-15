@@ -33,7 +33,7 @@ cancerbroker --help
 cancerbroker setup
 ```
 
-该命令现在会在 TTY 中打开一个最小化的逐行设置向导，然后：
+该命令现在会在 TTY 中打开一个交互式终端设置向导，然后：
 
 - 使用 `cancerbroker mcp` 将 CancerBroker 注册为本地 Opencode MCP 服务器
 - 将 rust-analyzer 内存保护设置写入 `~/.config/cancerbroker/config.toml`
@@ -84,33 +84,13 @@ cancerbroker setup --uninstall --non-interactive
 cancerbroker setup
 ```
 
-示例提示流程：
+代表性的向导流程：
 
 ```text
-CancerBroker setup will:
-- register the local MCP server in OpenCode
-- configure the rust-analyzer memory guard for this machine
-Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
-
-Enable rust-analyzer memory protection? [Y/n]
-  When enabled, CancerBroker watches rust-analyzer memory and can clean it up after repeated over-limit samples.
->
-
-Memory cap in GB [6]
-  CancerBroker starts counting rust-analyzer as over the limit after it stays above this amount of RAM.
->
-
-Consecutive over-limit samples before action [3]
-  This avoids reacting to a single short memory spike.
->
-
-Startup grace in seconds [300]
-  rust-analyzer often spikes during initial indexing, so counting starts after this delay.
->
-
-Cooldown after remediation in seconds [1800]
-  This prevents repeated remediation loops after rust-analyzer restarts.
->
+Header: 检测到的 RAM、当前步骤、setup 目标
+Body: 当前设置、说明，以及可编辑的数值或开关
+Summary: enabled 状态、memory cap、样本次数、startup grace、cooldown
+Controls: Enter 确认，Up 返回，数字键编辑数值，Esc 取消
 ```
 
 说明：
