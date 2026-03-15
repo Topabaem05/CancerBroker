@@ -1,0 +1,27 @@
+mode=budget-check
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+baseline_idle_file=.sisyphus/evidence/task-5-baseline-idle-rss.txt
+baseline_peak_file=.sisyphus/evidence/task-5-baseline-peak-rss.txt
+final_idle_file=.sisyphus/evidence/task-5-final-idle-rss.txt
+final_peak_file=.sisyphus/evidence/task-5-final-peak-rss.txt
+growth_file=.sisyphus/evidence/task-5-growth-10-rss.txt
+baseline_idle_rss_mib=7
+baseline_peak_rss_mib=10
+final_idle_rss_mib=3
+final_peak_rss_mib=3
+repeated_idle_spread_mib=0
+idle_budget_formula=min(40 MiB, floor(baseline_idle_rss_mib * 0.5))
+peak_budget_formula=min(64 MiB, floor(baseline_peak_rss_mib * 0.65))
+spread_budget_formula=repeated_idle_spread_mib <= 5
+idle_budget_mib=3
+peak_budget_mib=6
+spread_budget_mib=5
+idle_budget_pass=true
+peak_budget_pass=true
+spread_budget_pass=true
+overall_pass=true
+notes=Compares daemon baseline against one-shot ra-guard final RSS and repeated no-event spread budgets.

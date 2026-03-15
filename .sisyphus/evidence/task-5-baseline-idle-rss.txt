@@ -1,0 +1,11 @@
+mode=baseline-idle
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+samples=30
+rss_idle_min_kb=7472
+rss_idle_peak_kb=7472
+rss_idle_last_kb=7472
+notes=No completion events injected; captures daemon idle baseline.

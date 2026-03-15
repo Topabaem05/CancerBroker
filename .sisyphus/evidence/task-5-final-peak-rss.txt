@@ -1,0 +1,13 @@
+mode=final-peak
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+runs=5
+rss_run_values_kb=3472 3472 3472 3456 3488
+rss_window_min_kb=3456
+rss_window_peak_kb=3488
+rss_window_peak_mib=3
+command=target/release-size/cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+notes=Repeated one-shot ra-guard no-event runs; reports observed max RSS peak.

@@ -1,0 +1,12 @@
+mode=baseline-peak
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+events_sent=1
+samples=50
+rss_window_min_kb=10880
+rss_window_peak_kb=10880
+rss_window_last_kb=10880
+notes=Single completion event injected; reports fixed-window peak RSS.

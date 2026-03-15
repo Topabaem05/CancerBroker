@@ -1,0 +1,15 @@
+mode=growth-10
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+runs=10
+rss_run_values_kb=3456 3440 3456 3440 3472 3472 3472 3456 3488 3456
+rss_no_event_min_kb=3440
+rss_no_event_peak_kb=3488
+rss_no_event_spread_kb=48
+rss_no_event_spread_mib=0
+spread_budget_mib=5
+spread_budget_pass=true
+notes=Ten no-event ra-guard runs; verifies bounded RSS spread for one-shot path.

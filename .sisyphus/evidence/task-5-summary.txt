@@ -1,0 +1,7 @@
+mode=task-5-evidence
+platform=Darwin
+binary=/Users/guribbong/code/cancerbroker/target/release-size/cancerbroker
+daemon_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/completion-cleanup.toml
+ra_guard_fixture=/Users/guribbong/code/cancerbroker/fixtures/config/rust-analyzer-guard-minimal.toml
+sample_interval_seconds=0.10
+summary_files=/Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-baseline-idle-rss.txt /Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-baseline-peak-rss.txt /Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-final-idle-rss.txt /Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-final-peak-rss.txt /Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-growth-10-rss.txt /Users/guribbong/code/cancerbroker/.sisyphus/evidence/task-5-budget-check.txt
