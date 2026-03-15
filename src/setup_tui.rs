@@ -9,7 +9,7 @@ use crossterm::terminal::{
 };
 use tui::Terminal;
 use tui::backend::{Backend, CrosstermBackend};
-use tui::layout::{Constraint, Direction, Layout};
+use tui::layout::{Constraint, Direction, Layout, Rect};
 use tui::style::{Color, Modifier, Style};
 use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
@@ -31,6 +31,13 @@ enum SetupStep {
     StartupGrace,
     Cooldown,
     Review,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LayoutMode {
+    Wide,
+    Stacked,
+    TooSmall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -400,74 +407,152 @@ fn run_event_loop<B: Backend>(
 
 fn draw_setup_wizard<B: Backend>(frame: &mut tui::Frame<B>, state: &SetupWizardState) {
     let area = frame.size();
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Length(3),
-        ])
-        .split(area);
+    frame.render_widget(Clear, area);
 
-    let header_text = match state.defaults.detected_ram_gb {
+    let shell = Block::default()
+        .borders(Borders::ALL)
+        .title("CancerBroker Setup Wizard");
+    let inner = shell.inner(area);
+    frame.render_widget(shell, area);
+
+    match layout_mode(inner) {
+        LayoutMode::TooSmall => {
+            render_too_small_panel(frame, inner);
+        }
+        LayoutMode::Wide | LayoutMode::Stacked => {
+            let layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(5),
+                    Constraint::Min(14),
+                    Constraint::Length(4),
+                ])
+                .split(inner);
+
+            render_header_panel(frame, layout[0], state);
+
+            let body_layout = match layout_mode(inner) {
+                LayoutMode::Wide => Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
+                    .split(layout[1]),
+                LayoutMode::Stacked => Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+                    .split(layout[1]),
+                LayoutMode::TooSmall => unreachable!(),
+            };
+
+            render_current_step(frame, body_layout[0], state);
+            render_summary_panel(frame, body_layout[1], state);
+            render_controls_panel(frame, layout[2], state);
+        }
+    }
+}
+
+fn layout_mode(area: Rect) -> LayoutMode {
+    if area.width < 72 || area.height < 18 {
+        LayoutMode::TooSmall
+    } else if area.width >= 110 {
+        LayoutMode::Wide
+    } else {
+        LayoutMode::Stacked
+    }
+}
+
+fn render_header_panel<B: Backend>(
+    frame: &mut tui::Frame<B>,
+    area: Rect,
+    state: &SetupWizardState,
+) {
+    let details = match state.defaults.detected_ram_gb {
         Some(detected_ram_gb) => format!(
-            "CancerBroker Setup Wizard  |  Detected RAM: {detected_ram_gb} GB  |  {}",
+            "Detected RAM: {detected_ram_gb} GB | {} | writes Opencode MCP + rust-analyzer guard config",
             state.progress_label()
         ),
         None => format!(
-            "CancerBroker Setup Wizard  |  Detected RAM unavailable  |  {}",
+            "Detected RAM unavailable | {} | writes Opencode MCP + rust-analyzer guard config",
             state.progress_label()
         ),
     };
-    let header =
-        Paragraph::new(header_text).block(Block::default().borders(Borders::ALL).title("Setup"));
-    frame.render_widget(header, layout[0]);
-
-    let body_layout = if layout[1].width >= 100 {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
-            .split(layout[1])
-    } else {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(layout[1])
-    };
-
-    frame.render_widget(Clear, body_layout[0]);
-    frame.render_widget(Clear, body_layout[1]);
-
-    let current_panel = render_current_step(state);
-    frame.render_widget(current_panel, body_layout[0]);
-
-    let summary_panel = render_summary_panel(state);
-    frame.render_widget(summary_panel, body_layout[1]);
-
-    let controls = Paragraph::new(vec![Spans::from(vec![
-        Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" next/confirm  "),
-        Span::styled("Up", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" previous  "),
-        Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" cancel  "),
-        Span::styled("Digits", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" edit numeric fields"),
-    ])])
-    .block(Block::default().borders(Borders::ALL).title("Controls"));
-    frame.render_widget(controls, layout[2]);
+    let panel = Paragraph::new(vec![
+        Spans::from(Span::styled(
+            state.current_question().to_string(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from(details),
+    ])
+    .block(Block::default().borders(Borders::ALL).title("Header"))
+    .wrap(Wrap { trim: true });
+    frame.render_widget(panel, area);
 }
 
-fn render_current_step(state: &SetupWizardState) -> Paragraph<'static> {
+fn render_current_step<B: Backend>(
+    frame: &mut tui::Frame<B>,
+    area: Rect,
+    state: &SetupWizardState,
+) {
+    let outer = Block::default().borders(Borders::ALL).title("Step");
+    let inner = outer.inner(area);
+    frame.render_widget(outer, area);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(4),
+            Constraint::Length(4),
+            Constraint::Length(3),
+        ])
+        .split(inner);
+
+    let title_panel = Paragraph::new(vec![Spans::from(vec![
+        Span::styled(
+            state.current_question().to_string(),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  |  "),
+        Span::raw(state.progress_label()),
+    ])])
+    .block(Block::default().borders(Borders::ALL).title("Title"))
+    .wrap(Wrap { trim: true });
+    frame.render_widget(title_panel, layout[0]);
+
+    let description_panel = Paragraph::new(state.current_description())
+        .block(Block::default().borders(Borders::ALL).title("Description"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(description_panel, layout[1]);
+
+    let input_panel = render_input_panel(state);
+    frame.render_widget(input_panel, layout[2]);
+
+    let footer_lines = match &state.error {
+        Some(error) => vec![Spans::from(Span::styled(
+            error.clone(),
+            Style::default().fg(Color::Red),
+        ))],
+        None => vec![Spans::from(help_text_for_step(state.current_step()))],
+    };
+    let footer_title = if state.error.is_some() {
+        "Validation"
+    } else {
+        "Help"
+    };
+    let footer_panel = Paragraph::new(footer_lines)
+        .block(Block::default().borders(Borders::ALL).title(footer_title))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(footer_panel, layout[3]);
+}
+
+fn render_input_panel(state: &SetupWizardState) -> Paragraph<'static> {
     let mut lines = vec![Spans::from(Span::styled(
-        state.current_question().to_string(),
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+        state.step_titles()[state.step_index].to_string(),
+        Style::default().add_modifier(Modifier::BOLD),
     ))];
-    lines.push(Spans::from(""));
-    lines.push(Spans::from(state.current_description()));
     lines.push(Spans::from(""));
 
     match state.current_step() {
@@ -487,6 +572,7 @@ fn render_current_step(state: &SetupWizardState) -> Paragraph<'static> {
                 Span::raw("   "),
                 Span::styled(" Disabled ", disabled_style),
             ]));
+            lines.push(Spans::from("Use Left/Right/Space to toggle."));
         }
         SetupStep::Review => {
             for line in state.summary_lines() {
@@ -508,40 +594,124 @@ fn render_current_step(state: &SetupWizardState) -> Paragraph<'static> {
         }
     }
 
-    if let Some(error) = &state.error {
-        lines.push(Spans::from(""));
-        lines.push(Spans::from(Span::styled(
-            error.clone(),
-            Style::default().fg(Color::Red),
-        )));
-    }
-
     Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Current Step"))
+        .block(Block::default().borders(Borders::ALL).title("Input"))
         .wrap(Wrap { trim: true })
 }
 
-fn render_summary_panel(state: &SetupWizardState) -> Paragraph<'static> {
-    let mut lines = Vec::new();
-    lines.push(Spans::from(Span::styled(
-        state.step_titles().join(" -> "),
-        Style::default().add_modifier(Modifier::BOLD),
-    )));
-    lines.push(Spans::from(""));
-    for line in state.summary_lines() {
-        lines.push(Spans::from(line));
-    }
-    lines.push(Spans::from(""));
-    lines.push(Spans::from(
-        "The wizard updates the Opencode MCP config and rust-analyzer memory-guard config only.",
-    ));
-    lines.push(Spans::from(
-        "Global guardian mode is preserved from your existing configuration.",
-    ));
+fn render_summary_panel<B: Backend>(
+    frame: &mut tui::Frame<B>,
+    area: Rect,
+    state: &SetupWizardState,
+) {
+    let outer = Block::default().borders(Borders::ALL).title("Summary");
+    let inner = outer.inner(area);
+    frame.render_widget(outer, area);
 
-    Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Summary"))
-        .wrap(Wrap { trim: true })
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(6),
+            Constraint::Length(5),
+        ])
+        .split(inner);
+
+    let path_panel = Paragraph::new(state.step_titles().join(" -> "))
+        .block(Block::default().borders(Borders::ALL).title("Path"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(path_panel, layout[0]);
+
+    let answers_panel = Paragraph::new(
+        state
+            .summary_lines()
+            .into_iter()
+            .map(Spans::from)
+            .collect::<Vec<_>>(),
+    )
+    .block(Block::default().borders(Borders::ALL).title("Answers"))
+    .wrap(Wrap { trim: true });
+    frame.render_widget(answers_panel, layout[1]);
+
+    let note_panel = Paragraph::new(vec![
+        Spans::from("The wizard updates the Opencode MCP config and rust-analyzer memory-guard config only."),
+        Spans::from("Global guardian mode is preserved from your existing configuration."),
+    ])
+    .block(Block::default().borders(Borders::ALL).title("Notes"))
+    .wrap(Wrap { trim: true });
+    frame.render_widget(note_panel, layout[2]);
+}
+
+fn render_controls_panel<B: Backend>(
+    frame: &mut tui::Frame<B>,
+    area: Rect,
+    state: &SetupWizardState,
+) {
+    let mut lines = vec![Spans::from(vec![
+        Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" confirm  "),
+        Span::styled("Up", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" previous  "),
+        Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" cancel"),
+    ])];
+
+    if state.current_step() == SetupStep::Enable {
+        lines.push(Spans::from(vec![
+            Span::styled(
+                "Left/Right/Space",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" toggle enabled"),
+        ]));
+    } else if state.current_step() != SetupStep::Review {
+        lines.push(Spans::from(vec![
+            Span::styled("Digits", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" replace value  "),
+            Span::styled("Backspace", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" erase/go back"),
+        ]));
+    }
+
+    let controls = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Controls"))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(controls, area);
+}
+
+fn render_too_small_panel<B: Backend>(frame: &mut tui::Frame<B>, area: Rect) {
+    let warning = Paragraph::new(vec![
+        Spans::from(Span::styled(
+            "Terminal too small for the setup wizard.",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Spans::from("Resize the terminal and run `cancerbroker setup` again."),
+        Spans::from(
+            "Non-interactive setup remains available with `cancerbroker setup --non-interactive`.",
+        ),
+    ])
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("Resize Required"),
+    )
+    .wrap(Wrap { trim: true });
+    frame.render_widget(warning, area);
+}
+
+fn help_text_for_step(step: SetupStep) -> &'static str {
+    match step {
+        SetupStep::Enable => {
+            "Choose whether CancerBroker should actively guard rust-analyzer memory."
+        }
+        SetupStep::MemoryCap => "Enter the memory cap in whole gigabytes.",
+        SetupStep::Samples => "Choose how many over-limit samples are required before action.",
+        SetupStep::StartupGrace => "Choose how long startup spikes should be ignored.",
+        SetupStep::Cooldown => "Choose the cooldown after remediation before counting again.",
+        SetupStep::Review => "Press Enter to write both config files with the shown values.",
+    }
 }
 
 fn parse_u64(raw: &str, min: Option<u64>, max: Option<u64>) -> Result<u64, String> {
