@@ -37,6 +37,7 @@ This now opens an interactive terminal setup wizard on TTY and then:
 
 - registers CancerBroker as a local Opencode MCP server using `cancerbroker mcp`
 - writes rust-analyzer memory-guard settings into `~/.config/cancerbroker/config.toml`
+- falls back to the line-based wizard if terminal UI initialization fails
 
 Use non-interactive mode when you want the machine-recommended defaults without prompts:
 
@@ -87,10 +88,11 @@ cancerbroker setup
 Representative wizard flow:
 
 ```text
-Header: detected RAM, current step, setup targets
-Body: current setting, explanation, editable value or toggle
-Summary: enabled flag, memory cap, sample count, startup grace, cooldown
-Controls: Enter confirms, Up goes back, digits edit numeric fields, Esc cancels
+Header box: detected RAM, current step, setup targets
+Step box: title, description, input, help/validation panels
+Summary box: enabled flag, memory cap, sample count, startup grace, cooldown
+Controls box: Enter confirms, Up goes back, Left/Right/Space toggle enablement, digits and Backspace edit numeric fields, Esc cancels
+Too-small box: resize warning when the terminal is too small for the full wizard
 ```
 
 Notes:
