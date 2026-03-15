@@ -11,10 +11,11 @@ use crate::completion::{
     CompletionEvent, CompletionSource, CompletionStateStore, load_completion_state,
     persist_completion_state,
 };
-use crate::config::{GuardianConfig, Mode};
+use crate::config::{GuardianConfig, Mode, RustAnalyzerMemoryGuardPolicy};
 use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
 use crate::leak::LeakDetector;
+use crate::memory_guard::RustAnalyzerMemoryGuard;
 use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::{
     StorageSnapshot, scan_allowlisted_roots, try_apply_watch_events_incremental,
@@ -36,6 +37,12 @@ pub struct LeakCleanupOutput {
     pub leak_group_remediations: usize,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct MemoryGuardOutput {
+    pub rust_analyzer_memory_candidates: usize,
+    pub rust_analyzer_memory_remediations: usize,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonOutput {
     pub socket_path: PathBuf,
@@ -45,6 +52,8 @@ pub struct DaemonOutput {
     pub leak_candidates: usize,
     pub leak_process_remediations: usize,
     pub leak_group_remediations: usize,
+    pub rust_analyzer_memory_candidates: usize,
+    pub rust_analyzer_memory_remediations: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +91,8 @@ fn build_daemon_output(socket_path: PathBuf) -> DaemonOutput {
         leak_candidates: 0,
         leak_process_remediations: 0,
         leak_group_remediations: 0,
+        rust_analyzer_memory_candidates: 0,
+        rust_analyzer_memory_remediations: 0,
     }
 }
 
@@ -199,6 +210,14 @@ fn build_ownership_policy(config: &GuardianConfig) -> OwnershipPolicy {
     }
 }
 
+fn build_rust_analyzer_ownership_policy(config: &GuardianConfig) -> OwnershipPolicy {
+    OwnershipPolicy {
+        expected_uid: current_effective_uid(),
+        required_command_markers: vec!["rust-analyzer".to_string()],
+        same_uid_only: config.rust_analyzer_memory_guard.same_uid_only,
+    }
+}
+
 fn build_cleanup_settings(config: &GuardianConfig) -> AutoCleanupSettings {
     AutoCleanupSettings {
         cleanup_policy: CleanupPolicy {
@@ -280,6 +299,48 @@ fn run_leak_enforcement_with_inventory(
     })
 }
 
+fn run_rust_analyzer_memory_guard_with_inventory(
+    config: &GuardianConfig,
+    guard: &mut RustAnalyzerMemoryGuard,
+    inventory: &ProcessInventory,
+    term_timeout: Duration,
+    now: SystemTime,
+) -> Result<MemoryGuardOutput, IpcError> {
+    let policy: &RustAnalyzerMemoryGuardPolicy = &config.rust_analyzer_memory_guard;
+    let ownership_policy = build_rust_analyzer_ownership_policy(config);
+    let candidates = guard.observe_inventory(inventory, policy, &ownership_policy, now);
+
+    if config.mode != Mode::Enforce {
+        return Ok(MemoryGuardOutput {
+            rust_analyzer_memory_candidates: candidates.len(),
+            ..MemoryGuardOutput::default()
+        });
+    }
+
+    let mut remediations = 0;
+    for candidate in &candidates {
+        let outcome = remediate_process(&ProcessRemediationRequest {
+            identity: candidate.identity.clone(),
+            ownership_policy: ownership_policy.clone(),
+            term_timeout,
+        })
+        .map_err(execution_error)?;
+
+        if remediation_succeeded(&outcome) {
+            remediations += 1;
+        }
+    }
+
+    if remediations > 0 {
+        guard.record_remediation(now);
+    }
+
+    Ok(MemoryGuardOutput {
+        rust_analyzer_memory_candidates: candidates.len(),
+        rust_analyzer_memory_remediations: remediations,
+    })
+}
+
 pub async fn run_daemon_once(
     config: &GuardianConfig,
     max_events: usize,
@@ -291,6 +352,7 @@ pub async fn run_daemon_once(
     let mut engine =
         build_cleanup_engine_with_resolver(config, build_resolver_from(&inventory, &snapshot))?;
     let mut detector = LeakDetector::default();
+    let mut rust_analyzer_guard = RustAnalyzerMemoryGuard::default();
     let events =
         receive_completion_events_once(&config.completion.daemon_socket_path, max_events).await?;
 
@@ -304,6 +366,13 @@ pub async fn run_daemon_once(
         &ownership_policy,
         term_timeout,
     )?;
+    let memory_guard_output = run_rust_analyzer_memory_guard_with_inventory(
+        config,
+        &mut rust_analyzer_guard,
+        &inventory,
+        term_timeout,
+        now,
+    )?;
     persist_engine_state(config, &engine)?;
 
     Ok(DaemonOutput {
@@ -314,6 +383,8 @@ pub async fn run_daemon_once(
         leak_candidates: leak_output.leak_candidates,
         leak_process_remediations: leak_output.leak_process_remediations,
         leak_group_remediations: leak_output.leak_group_remediations,
+        rust_analyzer_memory_candidates: memory_guard_output.rust_analyzer_memory_candidates,
+        rust_analyzer_memory_remediations: memory_guard_output.rust_analyzer_memory_remediations,
     })
 }
 
@@ -327,6 +398,7 @@ pub async fn run_daemon_loop(
     let mut snapshot_cache = StorageSnapshotCache::new(&config.storage.allowlist)?;
     let mut engine = build_cleanup_engine_with_resolver(config, CandidateResolver::default())?;
     let mut detector = LeakDetector::default();
+    let mut rust_analyzer_guard = RustAnalyzerMemoryGuard::default();
     let listener = CompletionEventListener::bind(&config.completion.daemon_socket_path)?;
     let mut output = build_daemon_output(config.completion.daemon_socket_path.clone());
     let mut cycles = 0_usize;
@@ -351,9 +423,20 @@ pub async fn run_daemon_loop(
             &ownership_policy,
             term_timeout,
         )?;
+        let memory_guard_output = run_rust_analyzer_memory_guard_with_inventory(
+            config,
+            &mut rust_analyzer_guard,
+            &inventory,
+            term_timeout,
+            now,
+        )?;
         output.leak_candidates += leak_output.leak_candidates;
         output.leak_process_remediations += leak_output.leak_process_remediations;
         output.leak_group_remediations += leak_output.leak_group_remediations;
+        output.rust_analyzer_memory_candidates +=
+            memory_guard_output.rust_analyzer_memory_candidates;
+        output.rust_analyzer_memory_remediations +=
+            memory_guard_output.rust_analyzer_memory_remediations;
         persist_engine_state(config, &engine)?;
 
         cycles += 1;
@@ -477,17 +560,18 @@ mod tests {
         DaemonRunOptions, StorageSnapshotCache, build_cleanup_engine, build_cleanup_settings,
         build_daemon_output, build_ownership_policy, build_resolver, execution_error,
         process_event_batch, remediation_succeeded, run_leak_enforcement_with_inventory,
-        run_reconciliation_cycle,
+        run_reconciliation_cycle, run_rust_analyzer_memory_guard_with_inventory,
     };
     use crate::completion::{
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
         CompletionStateSnapshot,
     };
     use crate::config::{
-        CompletionCleanupPolicy, GuardianConfig, LeakDetectionPolicy, Mode, SafetyPolicy,
-        SamplingPolicy, StoragePolicy,
+        CompletionCleanupPolicy, GuardianConfig, LeakDetectionPolicy, Mode,
+        RustAnalyzerMemoryGuardPolicy, SafetyPolicy, SamplingPolicy, StoragePolicy,
     };
     use crate::leak::LeakDetector;
+    use crate::memory_guard::RustAnalyzerMemoryGuard;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
     use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
     use crate::platform::current_effective_uid;
@@ -533,6 +617,8 @@ mod tests {
         assert_eq!(output.leak_candidates, 0);
         assert_eq!(output.leak_process_remediations, 0);
         assert_eq!(output.leak_group_remediations, 0);
+        assert_eq!(output.rust_analyzer_memory_candidates, 0);
+        assert_eq!(output.rust_analyzer_memory_remediations, 0);
     }
 
     #[test]
@@ -761,6 +847,24 @@ mod tests {
         }])
     }
 
+    fn rust_analyzer_test_inventory(
+        pid: u32,
+        start_time_secs: u64,
+        memory_bytes: u64,
+    ) -> ProcessInventory {
+        ProcessInventory::from_samples([ProcessSample {
+            pid,
+            parent_pid: Some(1),
+            pgid: None,
+            start_time_secs,
+            uid: Some(current_effective_uid()),
+            memory_bytes,
+            cpu_percent: 0.2,
+            command: "rust-analyzer --stdio".to_string(),
+            listening_ports: vec![],
+        }])
+    }
+
     #[test]
     fn run_leak_enforcement_with_inventory_reports_candidates_in_observe_mode() {
         let config = GuardianConfig {
@@ -816,6 +920,96 @@ mod tests {
         assert_eq!(output.leak_candidates, 1);
         assert_eq!(output.leak_process_remediations, 0);
         assert_eq!(output.leak_group_remediations, 0);
+    }
+
+    #[test]
+    fn run_rust_analyzer_memory_guard_reports_candidates_in_observe_mode() {
+        let config = GuardianConfig {
+            mode: Mode::Observe,
+            rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy {
+                enabled: true,
+                max_rss_bytes: 100,
+                required_consecutive_samples: 2,
+                startup_grace_secs: 0,
+                cooldown_secs: 300,
+                same_uid_only: true,
+            },
+            completion: CompletionCleanupPolicy {
+                cleanup_retry_interval_secs: 1,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
+        let term_timeout = Duration::from_secs(1);
+        let now = UNIX_EPOCH + Duration::from_secs(500);
+        let mut guard = RustAnalyzerMemoryGuard::default();
+
+        assert_eq!(
+            run_rust_analyzer_memory_guard_with_inventory(
+                &config,
+                &mut guard,
+                &rust_analyzer_test_inventory(77, 42, 110),
+                term_timeout,
+                now,
+            )
+            .expect("first sample"),
+            super::MemoryGuardOutput::default()
+        );
+
+        let output = run_rust_analyzer_memory_guard_with_inventory(
+            &config,
+            &mut guard,
+            &rust_analyzer_test_inventory(77, 42, 120),
+            term_timeout,
+            now,
+        )
+        .expect("second sample");
+
+        assert_eq!(output.rust_analyzer_memory_candidates, 1);
+        assert_eq!(output.rust_analyzer_memory_remediations, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_rust_analyzer_memory_guard_terminates_process_in_enforce_mode() {
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("sleep process should spawn");
+
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy {
+                enabled: true,
+                max_rss_bytes: 100,
+                required_consecutive_samples: 2,
+                startup_grace_secs: 0,
+                cooldown_secs: 300,
+                same_uid_only: true,
+            },
+            completion: CompletionCleanupPolicy {
+                cleanup_retry_interval_secs: 1,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
+        let term_timeout = Duration::from_secs(1);
+        let now = UNIX_EPOCH + Duration::from_secs(500);
+        let mut guard = RustAnalyzerMemoryGuard::default();
+
+        for memory_bytes in [110_u64, 120] {
+            let _ = run_rust_analyzer_memory_guard_with_inventory(
+                &config,
+                &mut guard,
+                &rust_analyzer_test_inventory(child.id(), 42, memory_bytes),
+                term_timeout,
+                now,
+            )
+            .expect("memory guard should run");
+        }
+
+        let status = child.wait().expect("child should exit after remediation");
+        assert!(!status.success());
     }
 
     #[cfg(unix)]

@@ -9,6 +9,7 @@ pub mod evidence;
 pub mod ipc;
 pub mod leak;
 pub mod mcp;
+pub mod memory_guard;
 pub mod metrics;
 pub mod monitor;
 pub mod packaging;

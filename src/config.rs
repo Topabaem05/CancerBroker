@@ -166,6 +166,29 @@ impl Default for LeakDetectionPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RustAnalyzerMemoryGuardPolicy {
+    pub enabled: bool,
+    pub max_rss_bytes: u64,
+    pub required_consecutive_samples: usize,
+    pub startup_grace_secs: u64,
+    pub cooldown_secs: u64,
+    pub same_uid_only: bool,
+}
+
+impl Default for RustAnalyzerMemoryGuardPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_rss_bytes: 500 * 1024 * 1024,
+            required_consecutive_samples: 3,
+            startup_grace_secs: 300,
+            cooldown_secs: 1800,
+            same_uid_only: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IpcConfig {
     pub enabled: bool,
     pub socket_path: PathBuf,
@@ -239,6 +262,8 @@ pub struct GuardianConfig {
     #[serde(default)]
     pub leak_detection: LeakDetectionPolicy,
     #[serde(default)]
+    pub rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy,
+    #[serde(default)]
     pub ipc: IpcConfig,
     #[serde(default)]
     pub completion: CompletionCleanupPolicy,
@@ -255,6 +280,7 @@ impl Default for GuardianConfig {
             evidence_retention: EvidenceRetention::default(),
             safety: SafetyPolicy::default(),
             leak_detection: LeakDetectionPolicy::default(),
+            rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy::default(),
             ipc: IpcConfig::default(),
             completion: CompletionCleanupPolicy::default(),
         }
@@ -297,7 +323,7 @@ mod tests {
     use super::{
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
         DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST, GuardianConfig, LeakDetectionPolicy,
-        Mode, default_completion_state_path, load_config,
+        Mode, RustAnalyzerMemoryGuardPolicy, default_completion_state_path, load_config,
     };
 
     #[test]
@@ -326,6 +352,10 @@ mod tests {
             default_completion_state_path()
         );
         assert_eq!(config.leak_detection, LeakDetectionPolicy::default());
+        assert_eq!(
+            config.rust_analyzer_memory_guard,
+            RustAnalyzerMemoryGuardPolicy::default()
+        );
     }
 
     #[test]
@@ -417,5 +447,38 @@ mod tests {
         assert_eq!(config.leak_detection.required_consecutive_growth_samples, 4);
         assert_eq!(config.leak_detection.minimum_rss_bytes, 1234);
         assert_eq!(config.leak_detection.minimum_growth_bytes_per_sample, 5678);
+    }
+
+    #[test]
+    fn load_config_parses_rust_analyzer_memory_guard_overrides() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("guardian.toml");
+        fs::write(
+            &path,
+            r#"
+                [rust_analyzer_memory_guard]
+                enabled = true
+                max_rss_bytes = 600000000
+                required_consecutive_samples = 2
+                startup_grace_secs = 60
+                cooldown_secs = 120
+                same_uid_only = false
+            "#,
+        )
+        .expect("config file should be written");
+
+        let config = load_config(&path).expect("rust-analyzer memory guard config should load");
+
+        assert!(config.rust_analyzer_memory_guard.enabled);
+        assert_eq!(config.rust_analyzer_memory_guard.max_rss_bytes, 600000000);
+        assert_eq!(
+            config
+                .rust_analyzer_memory_guard
+                .required_consecutive_samples,
+            2
+        );
+        assert_eq!(config.rust_analyzer_memory_guard.startup_grace_secs, 60);
+        assert_eq!(config.rust_analyzer_memory_guard.cooldown_secs, 120);
+        assert!(!config.rust_analyzer_memory_guard.same_uid_only);
     }
 }
