@@ -9,8 +9,22 @@ CancerBroker は Opencode プロセス向けの Rust 製クリーンアップツ
 
 ## インストール
 
+GitHub からインストール:
+
 ```bash
 cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+現在の checkout から直接ビルドして入れる場合:
+
+```bash
+cargo install --path .
+```
+
+バイナリが使えることを確認:
+
+```bash
+cancerbroker --help
 ```
 
 ## Opencode セットアップ
@@ -28,6 +42,38 @@ cancerbroker setup
 
 ```bash
 cancerbroker setup --non-interactive
+```
+
+### setup が書き込む内容
+
+`cancerbroker setup` は次のファイルを更新します。
+
+- Opencode MCP 設定: `~/.config/opencode/opencode.json`
+- CancerBroker guard 設定: `~/.config/cancerbroker/config.toml`
+
+guard 設定の場所を上書きしたい場合は、実行前に `CANCERBROKER_CONFIG` を設定します。
+
+```bash
+export CANCERBROKER_CONFIG="$HOME/.config/cancerbroker/custom-config.toml"
+cancerbroker setup --non-interactive
+```
+
+setup コマンドは、実際に更新したパスと作成したバックアップパスを表示します。
+
+### 手動設定フロー
+
+対話ウィザードを使わない最小フローは次の通りです。
+
+1. バイナリをインストール
+2. `cancerbroker setup --non-interactive` を実行
+3. `~/.config/opencode/opencode.json` を確認
+4. `~/.config/cancerbroker/config.toml` を確認
+5. `cancerbroker --config ~/.config/cancerbroker/config.toml status --json` で検証
+
+Opencode MCP エントリを再び削除する場合:
+
+```bash
+cancerbroker setup --uninstall --non-interactive
 ```
 
 ### 対話セットアップ例
@@ -114,6 +160,16 @@ flowchart TD
 cancerbroker --config fixtures/config/observe-only.toml status --json
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
 cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+scripts/measure_ra_guard_rss.sh --mode baseline-idle --output /tmp/ra-guard-rss-baseline.txt
+```
+
+ローカルインストール時の一般的な検証手順は次の通りです。
+
+```bash
+cancerbroker setup --non-interactive
+cancerbroker --config ~/.config/cancerbroker/config.toml status --json
+cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 ```
 
 ## できること

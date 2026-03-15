@@ -9,8 +9,22 @@ CancerBroker 是一个面向 Opencode 进程的 Rust 清理工具。它会跟踪
 
 ## 安装
 
+从 GitHub 安装：
+
 ```bash
 cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+或者直接从当前 checkout 构建安装：
+
+```bash
+cargo install --path .
+```
+
+确认二进制已可用：
+
+```bash
+cancerbroker --help
 ```
 
 ## Opencode 设置
@@ -28,6 +42,38 @@ cancerbroker setup
 
 ```bash
 cancerbroker setup --non-interactive
+```
+
+### setup 会写入什么
+
+`cancerbroker setup` 会更新这些文件：
+
+- Opencode MCP 配置：`~/.config/opencode/opencode.json`
+- CancerBroker guard 配置：`~/.config/cancerbroker/config.toml`
+
+如果你想覆盖 guard 配置路径，请在运行命令前设置 `CANCERBROKER_CONFIG`：
+
+```bash
+export CANCERBROKER_CONFIG="$HOME/.config/cancerbroker/custom-config.toml"
+cancerbroker setup --non-interactive
+```
+
+setup 命令会打印它实际修改的路径，以及创建的备份路径。
+
+### 手动配置流程
+
+如果你不想使用交互式向导，最小手动流程如下：
+
+1. 安装二进制
+2. 运行 `cancerbroker setup --non-interactive`
+3. 检查 `~/.config/opencode/opencode.json`
+4. 检查 `~/.config/cancerbroker/config.toml`
+5. 通过 `cancerbroker --config ~/.config/cancerbroker/config.toml status --json` 验证
+
+如果你想再次移除 Opencode MCP 条目：
+
+```bash
+cancerbroker setup --uninstall --non-interactive
 ```
 
 ### 交互式设置示例
@@ -114,6 +160,16 @@ flowchart TD
 cancerbroker --config fixtures/config/observe-only.toml status --json
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
 cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+scripts/measure_ra_guard_rss.sh --mode baseline-idle --output /tmp/ra-guard-rss-baseline.txt
+```
+
+对于本地安装，常见的验证路径是：
+
+```bash
+cancerbroker setup --non-interactive
+cancerbroker --config ~/.config/cancerbroker/config.toml status --json
+cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 ```
 
 ## 功能说明

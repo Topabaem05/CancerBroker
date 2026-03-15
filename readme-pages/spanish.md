@@ -9,8 +9,22 @@ CancerBroker es una herramienta de limpieza en Rust para procesos de Opencode. R
 
 ## Instalación
 
+Instala desde GitHub:
+
 ```bash
 cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+Compila desde el checkout actual en su lugar:
+
+```bash
+cargo install --path .
+```
+
+Confirma que el binario está disponible:
+
+```bash
+cancerbroker --help
 ```
 
 ## Configuración de Opencode
@@ -28,6 +42,38 @@ Usa el modo no interactivo cuando quieras aplicar los valores recomendados para 
 
 ```bash
 cancerbroker setup --non-interactive
+```
+
+### Qué escribe setup
+
+`cancerbroker setup` actualiza estos archivos:
+
+- Configuración MCP de Opencode: `~/.config/opencode/opencode.json`
+- Configuración del guard de CancerBroker: `~/.config/cancerbroker/config.toml`
+
+Si quieres sobrescribir la ubicación de la configuración del guard, define `CANCERBROKER_CONFIG` antes de ejecutar el comando:
+
+```bash
+export CANCERBROKER_CONFIG="$HOME/.config/cancerbroker/custom-config.toml"
+cancerbroker setup --non-interactive
+```
+
+El comando setup imprime las rutas exactas que tocó, además de cualquier ruta de backup creada.
+
+### Flujo de configuración manual
+
+Si no quieres usar el asistente interactivo, el flujo manual mínimo es:
+
+1. instalar el binario
+2. ejecutar `cancerbroker setup --non-interactive`
+3. revisar `~/.config/opencode/opencode.json`
+4. revisar `~/.config/cancerbroker/config.toml`
+5. verificar con `cancerbroker --config ~/.config/cancerbroker/config.toml status --json`
+
+Para quitar de nuevo la entrada MCP de Opencode:
+
+```bash
+cancerbroker setup --uninstall --non-interactive
 ```
 
 ### Ejemplo de configuración interactiva
@@ -114,6 +160,16 @@ flowchart TD
 cancerbroker --config fixtures/config/observe-only.toml status --json
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
 cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+scripts/measure_ra_guard_rss.sh --mode baseline-idle --output /tmp/ra-guard-rss-baseline.txt
+```
+
+Para una instalación local, la ruta habitual de verificación es:
+
+```bash
+cancerbroker setup --non-interactive
+cancerbroker --config ~/.config/cancerbroker/config.toml status --json
+cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 ```
 
 ## Qué hace
