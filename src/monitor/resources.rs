@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 #[cfg(unix)]
 use std::process::Command;
@@ -51,36 +53,54 @@ fn finalize_resource(report: &mut ProcessResourceReport, resource: OpenResource)
     report.resources.push(resource);
 }
 
-#[cfg(any(unix, test))]
+#[cfg(test)]
 fn parse_lsof_field_output(output: &str, pid: u32) -> ProcessResourceReport {
-    let mut report = ProcessResourceReport::empty(pid);
+    parse_lsof_field_output_batch(output)
+        .remove(&pid)
+        .unwrap_or_else(|| ProcessResourceReport::empty(pid))
+}
+
+#[cfg(any(unix, test))]
+fn flush_resource(
+    reports: &mut BTreeMap<u32, ProcessResourceReport>,
+    current_pid: Option<u32>,
+    descriptor: &mut Option<String>,
+    kind: &mut Option<String>,
+    target: &mut Option<String>,
+    state: &mut Option<String>,
+) {
+    let Some(pid) = current_pid else {
+        return;
+    };
+    let Some(descriptor_value) = descriptor.take() else {
+        return;
+    };
+
+    let target_value = target.take().unwrap_or_else(|| "(unknown)".to_string());
+    let full_target = match state.take() {
+        Some(state_value) => format!("{target_value} [{state_value}]"),
+        None => target_value,
+    };
+    finalize_resource(
+        reports
+            .entry(pid)
+            .or_insert_with(|| ProcessResourceReport::empty(pid)),
+        OpenResource {
+            descriptor: descriptor_value,
+            kind: kind.take().unwrap_or_else(|| "unknown".to_string()),
+            target: full_target,
+        },
+    );
+}
+
+#[cfg(any(unix, test))]
+fn parse_lsof_field_output_batch(output: &str) -> BTreeMap<u32, ProcessResourceReport> {
+    let mut reports = BTreeMap::new();
+    let mut current_pid: Option<u32> = None;
     let mut current_descriptor: Option<String> = None;
     let mut current_kind: Option<String> = None;
     let mut current_target: Option<String> = None;
     let mut socket_state: Option<String> = None;
-
-    let flush = |report: &mut ProcessResourceReport,
-                 descriptor: &mut Option<String>,
-                 kind: &mut Option<String>,
-                 target: &mut Option<String>,
-                 state: &mut Option<String>| {
-        let Some(descriptor_value) = descriptor.take() else {
-            return;
-        };
-        let target_value = target.take().unwrap_or_else(|| "(unknown)".to_string());
-        let full_target = match state.take() {
-            Some(state_value) => format!("{target_value} [{state_value}]"),
-            None => target_value,
-        };
-        finalize_resource(
-            report,
-            OpenResource {
-                descriptor: descriptor_value,
-                kind: kind.take().unwrap_or_else(|| "unknown".to_string()),
-                target: full_target,
-            },
-        );
-    };
 
     for line in output.lines() {
         if line.is_empty() {
@@ -88,17 +108,28 @@ fn parse_lsof_field_output(output: &str, pid: u32) -> ProcessResourceReport {
         }
 
         if let Some(rest) = line.strip_prefix('p') {
-            if let Ok(parsed_pid) = rest.parse::<u32>()
-                && parsed_pid != pid
-            {
-                continue;
+            flush_resource(
+                &mut reports,
+                current_pid,
+                &mut current_descriptor,
+                &mut current_kind,
+                &mut current_target,
+                &mut socket_state,
+            );
+
+            current_pid = rest.parse::<u32>().ok();
+            if let Some(pid) = current_pid {
+                reports
+                    .entry(pid)
+                    .or_insert_with(|| ProcessResourceReport::empty(pid));
             }
             continue;
         }
 
         if let Some(rest) = line.strip_prefix('f') {
-            flush(
-                &mut report,
+            flush_resource(
+                &mut reports,
+                current_pid,
                 &mut current_descriptor,
                 &mut current_kind,
                 &mut current_target,
@@ -125,42 +156,63 @@ fn parse_lsof_field_output(output: &str, pid: u32) -> ProcessResourceReport {
         }
     }
 
-    flush(
-        &mut report,
+    flush_resource(
+        &mut reports,
+        current_pid,
         &mut current_descriptor,
         &mut current_kind,
         &mut current_target,
         &mut socket_state,
     );
-    report
+
+    reports
 }
 
 #[cfg(unix)]
 pub fn collect_process_resources(pid: u32) -> ProcessResourceReport {
+    collect_process_resources_batch(&[pid])
+        .remove(&pid)
+        .unwrap_or_else(|| ProcessResourceReport::empty(pid))
+}
+
+#[cfg(unix)]
+pub fn collect_process_resources_batch(pids: &[u32]) -> BTreeMap<u32, ProcessResourceReport> {
+    if pids.is_empty() {
+        return BTreeMap::new();
+    }
+
+    let pid_arg = pids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
     let output = match Command::new("lsof")
-        .args(["-n", "-P", "-F", "pftnT", "-p", &pid.to_string()])
+        .args(["-n", "-P", "-F", "pftnT", "-p", pid_arg.as_str()])
         .output()
     {
         Ok(output) => output,
         Err(error) => {
-            let mut report = ProcessResourceReport::empty(pid);
-            report.collection_error = Some(format!("lsof execution failed: {error}"));
-            return report;
+            return resource_error_reports(pids, format!("lsof execution failed: {error}"));
         }
     };
 
     if !output.status.success() {
-        let mut report = ProcessResourceReport::empty(pid);
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        report.collection_error = Some(if stderr.is_empty() {
+        let error = if stderr.is_empty() {
             format!("lsof exited with status {}", output.status)
         } else {
             stderr
-        });
-        return report;
+        };
+        return resource_error_reports(pids, error);
     }
 
-    parse_lsof_field_output(&String::from_utf8_lossy(&output.stdout), pid)
+    let mut reports = parse_lsof_field_output_batch(&String::from_utf8_lossy(&output.stdout));
+    for &pid in pids {
+        reports
+            .entry(pid)
+            .or_insert_with(|| ProcessResourceReport::empty(pid));
+    }
+    reports
 }
 
 #[cfg(not(unix))]
@@ -171,9 +223,32 @@ pub fn collect_process_resources(pid: u32) -> ProcessResourceReport {
     report
 }
 
+#[cfg(not(unix))]
+pub fn collect_process_resources_batch(pids: &[u32]) -> BTreeMap<u32, ProcessResourceReport> {
+    pids.iter()
+        .copied()
+        .map(|pid| (pid, collect_process_resources(pid)))
+        .collect()
+}
+
+#[cfg(unix)]
+fn resource_error_reports(pids: &[u32], error: String) -> BTreeMap<u32, ProcessResourceReport> {
+    pids.iter()
+        .copied()
+        .map(|pid| {
+            let mut report = ProcessResourceReport::empty(pid);
+            report.collection_error = Some(error.clone());
+            (pid, report)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ProcessResourceReport, collect_process_resources, parse_lsof_field_output};
+    use super::{
+        ProcessResourceReport, collect_process_resources, parse_lsof_field_output,
+        parse_lsof_field_output_batch,
+    };
 
     #[test]
     fn parse_lsof_field_output_classifies_files_and_connections() {
@@ -198,6 +273,20 @@ mod tests {
         assert_eq!(report.resources[0].descriptor, "cwd");
         assert_eq!(report.resources[0].kind, "VDIR");
         assert_eq!(report.resources[0].target, "/tmp");
+    }
+
+    #[test]
+    fn parse_lsof_field_output_batch_keeps_resources_separated_by_pid() {
+        let reports = parse_lsof_field_output_batch(
+            "p55\nfcwd\ntVDIR\nn/tmp\np77\nf10\ntIPv4\nn127.0.0.1:3000\nTST=LISTEN\n",
+        );
+
+        assert_eq!(reports[&55].open_files, vec!["/tmp"]);
+        assert!(reports[&55].open_connections.is_empty());
+        assert_eq!(
+            reports[&77].open_connections,
+            vec!["127.0.0.1:3000 [LISTEN]"]
+        );
     }
 
     #[test]

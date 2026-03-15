@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, SystemTime};
 
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 
 use crate::autocleanup::{AutoCleanupEngine, AutoCleanupSettings};
@@ -14,7 +16,7 @@ use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
 use crate::leak::LeakDetector;
 use crate::monitor::process::ProcessInventory;
-use crate::monitor::storage::scan_allowlisted_roots;
+use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::platform::current_effective_uid;
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -50,6 +52,16 @@ pub struct DaemonRunOptions {
     pub idle_timeout: Duration,
 }
 
+struct StorageSnapshotCache {
+    allowlisted_roots: Vec<PathBuf>,
+    snapshot: StorageSnapshot,
+    watcher: Option<RecommendedWatcher>,
+    watch_events: Option<Receiver<notify::Result<notify::Event>>>,
+    snapshot_used: bool,
+    fallback_rescan_each_cycle: bool,
+    dirty: bool,
+}
+
 impl Default for DaemonRunOptions {
     fn default() -> Self {
         Self {
@@ -69,6 +81,89 @@ fn build_daemon_output(socket_path: PathBuf) -> DaemonOutput {
         leak_candidates: 0,
         leak_process_remediations: 0,
         leak_group_remediations: 0,
+    }
+}
+
+fn build_storage_watcher(
+    allowlisted_roots: &[PathBuf],
+) -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<notify::Event>>)> {
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |result| {
+        let _ = tx.send(result);
+    })?;
+
+    for root in allowlisted_roots {
+        watcher.watch(root, RecursiveMode::Recursive)?;
+    }
+
+    Ok((watcher, rx))
+}
+
+impl StorageSnapshotCache {
+    fn new(allowlisted_roots: &[PathBuf]) -> Result<Self, IpcError> {
+        let snapshot = scan_allowlisted_roots(allowlisted_roots).map_err(execution_error)?;
+        let watchable_roots = !allowlisted_roots.is_empty()
+            && allowlisted_roots
+                .iter()
+                .all(|root| root.exists() && root.is_dir());
+        let (watcher, watch_events, fallback_rescan_each_cycle) = if watchable_roots {
+            match build_storage_watcher(allowlisted_roots) {
+                Ok((watcher, watch_events)) => (Some(watcher), Some(watch_events), false),
+                Err(_) => (None, None, true),
+            }
+        } else {
+            (None, None, true)
+        };
+
+        Ok(Self {
+            allowlisted_roots: allowlisted_roots.to_vec(),
+            snapshot,
+            watcher,
+            watch_events,
+            snapshot_used: false,
+            fallback_rescan_each_cycle,
+            dirty: false,
+        })
+    }
+
+    fn refresh_if_needed(&mut self) -> Result<&StorageSnapshot, IpcError> {
+        if self.snapshot_used {
+            self.dirty |= self.take_watch_events();
+            if self.fallback_rescan_each_cycle {
+                self.dirty = true;
+            }
+        } else {
+            self.dirty |= self.take_watch_events();
+            self.snapshot_used = true;
+        }
+
+        if self.dirty {
+            self.snapshot =
+                scan_allowlisted_roots(&self.allowlisted_roots).map_err(execution_error)?;
+            self.dirty = false;
+        }
+
+        let _keep_watcher_alive = &self.watcher;
+        Ok(&self.snapshot)
+    }
+
+    fn take_watch_events(&mut self) -> bool {
+        let Some(watch_events) = &self.watch_events else {
+            return false;
+        };
+
+        let mut dirty = false;
+        while let Ok(result) = watch_events.try_recv() {
+            dirty = true;
+            if result.is_err() {
+                self.fallback_rescan_each_cycle = true;
+                self.watch_events = None;
+                self.watcher = None;
+                break;
+            }
+        }
+
+        dirty
     }
 }
 
@@ -112,10 +207,11 @@ fn run_leak_enforcement_with_inventory(
     config: &GuardianConfig,
     detector: &mut LeakDetector,
     inventory: &ProcessInventory,
+    ownership_policy: &OwnershipPolicy,
+    term_timeout: Duration,
 ) -> Result<LeakCleanupOutput, IpcError> {
-    let ownership_policy = build_ownership_policy(config);
     let candidates =
-        detector.observe_inventory(inventory, &config.leak_detection, &ownership_policy);
+        detector.observe_inventory(inventory, &config.leak_detection, ownership_policy);
 
     if config.mode != Mode::Enforce {
         return Ok(LeakCleanupOutput {
@@ -124,7 +220,6 @@ fn run_leak_enforcement_with_inventory(
         });
     }
 
-    let term_timeout = Duration::from_secs(config.completion.cleanup_retry_interval_secs.max(1));
     let mut leak_process_remediations = 0;
     let mut leak_group_remediations = 0;
     let mut seen_pgids = std::collections::BTreeSet::new();
@@ -165,25 +260,30 @@ fn run_leak_enforcement_with_inventory(
     })
 }
 
-fn run_leak_enforcement_cycle(
-    config: &GuardianConfig,
-    detector: &mut LeakDetector,
-) -> Result<LeakCleanupOutput, IpcError> {
-    let inventory = ProcessInventory::collect_live();
-    run_leak_enforcement_with_inventory(config, detector, &inventory)
-}
-
 pub async fn run_daemon_once(
     config: &GuardianConfig,
     max_events: usize,
 ) -> Result<DaemonOutput, IpcError> {
-    let mut engine = build_cleanup_engine(config)?;
+    let ownership_policy = build_ownership_policy(config);
+    let term_timeout = Duration::from_secs(config.completion.cleanup_retry_interval_secs.max(1));
+    let inventory = ProcessInventory::collect_live();
+    let snapshot = scan_allowlisted_roots(&config.storage.allowlist).map_err(execution_error)?;
+    let mut engine =
+        build_cleanup_engine_with_resolver(config, build_resolver_from(&inventory, &snapshot))?;
     let mut detector = LeakDetector::default();
     let events =
         receive_completion_events_once(&config.completion.daemon_socket_path, max_events).await?;
+
+    let now = SystemTime::now();
     let processed_events = process_event_batch(config, &mut engine, &events)?;
-    let reconciled_events = run_reconciliation_cycle(config, &mut engine)?;
-    let leak_output = run_leak_enforcement_cycle(config, &mut detector)?;
+    let reconciled_events = run_reconciliation_cycle(config, &mut engine, &snapshot, now)?;
+    let leak_output = run_leak_enforcement_with_inventory(
+        config,
+        &mut detector,
+        &inventory,
+        &ownership_policy,
+        term_timeout,
+    )?;
     persist_engine_state(config, &engine)?;
 
     Ok(DaemonOutput {
@@ -201,7 +301,11 @@ pub async fn run_daemon_loop(
     config: &GuardianConfig,
     options: DaemonRunOptions,
 ) -> Result<DaemonOutput, IpcError> {
-    let mut engine = build_cleanup_engine(config)?;
+    let ownership_policy = build_ownership_policy(config);
+    let term_timeout = Duration::from_secs(config.completion.cleanup_retry_interval_secs.max(1));
+    let mut system = sysinfo::System::new();
+    let mut snapshot_cache = StorageSnapshotCache::new(&config.storage.allowlist)?;
+    let mut engine = build_cleanup_engine_with_resolver(config, CandidateResolver::default())?;
     let mut detector = LeakDetector::default();
     let listener = CompletionEventListener::bind(&config.completion.daemon_socket_path)?;
     let mut output = build_daemon_output(config.completion.daemon_socket_path.clone());
@@ -211,10 +315,22 @@ pub async fn run_daemon_loop(
         let events = listener
             .receive_batch(options.max_events_per_batch, Some(options.idle_timeout))
             .await?;
+
+        let inventory = ProcessInventory::collect_live_with(&mut system);
+        let snapshot = snapshot_cache.refresh_if_needed()?;
+        engine.set_resolver(build_resolver_from(&inventory, snapshot));
+
         output.received_events += events.len();
+        let now = SystemTime::now();
         output.processed_events += process_event_batch(config, &mut engine, &events)?;
-        output.reconciled_events += run_reconciliation_cycle(config, &mut engine)?;
-        let leak_output = run_leak_enforcement_cycle(config, &mut detector)?;
+        output.reconciled_events += run_reconciliation_cycle(config, &mut engine, snapshot, now)?;
+        let leak_output = run_leak_enforcement_with_inventory(
+            config,
+            &mut detector,
+            &inventory,
+            &ownership_policy,
+            term_timeout,
+        )?;
         output.leak_candidates += leak_output.leak_candidates;
         output.leak_process_remediations += leak_output.leak_process_remediations;
         output.leak_group_remediations += leak_output.leak_group_remediations;
@@ -229,8 +345,16 @@ pub async fn run_daemon_loop(
     Ok(output)
 }
 
+#[cfg(test)]
 fn build_cleanup_engine(config: &GuardianConfig) -> Result<AutoCleanupEngine, IpcError> {
     let resolver = build_resolver(config)?;
+    build_cleanup_engine_with_resolver(config, resolver)
+}
+
+fn build_cleanup_engine_with_resolver(
+    config: &GuardianConfig,
+    resolver: CandidateResolver,
+) -> Result<AutoCleanupEngine, IpcError> {
     let state = load_completion_state(
         &config.completion.state_path,
         config.completion.dedupe_ttl_secs,
@@ -243,15 +367,22 @@ fn build_cleanup_engine(config: &GuardianConfig) -> Result<AutoCleanupEngine, Ip
     ))
 }
 
+#[cfg(test)]
 fn build_resolver(config: &GuardianConfig) -> Result<CandidateResolver, IpcError> {
     let snapshot = scan_allowlisted_roots(&config.storage.allowlist).map_err(execution_error)?;
     let inventory = ProcessInventory::collect_live();
+    Ok(build_resolver_from(&inventory, &snapshot))
+}
 
-    Ok(CandidateResolver::new(
-        SessionProcessIndex::from_inventory(&inventory),
-        SessionArtifactIndex::from_snapshot(&snapshot),
-        SessionPortIndex::from_inventory(&inventory),
-    ))
+fn build_resolver_from(
+    inventory: &ProcessInventory,
+    snapshot: &StorageSnapshot,
+) -> CandidateResolver {
+    CandidateResolver::new(
+        SessionProcessIndex::from_inventory(inventory),
+        SessionArtifactIndex::from_snapshot(snapshot),
+        SessionPortIndex::from_inventory(inventory),
+    )
 }
 
 fn process_event_batch(
@@ -259,8 +390,6 @@ fn process_event_batch(
     engine: &mut AutoCleanupEngine,
     events: &[CompletionEvent],
 ) -> Result<usize, IpcError> {
-    engine.set_resolver(build_resolver(config)?);
-
     let mut processed_events = 0;
     for event in events {
         if !config.completion.enabled_sources.contains(&event.source) {
@@ -279,6 +408,8 @@ fn process_event_batch(
 fn run_reconciliation_cycle(
     config: &GuardianConfig,
     engine: &mut AutoCleanupEngine,
+    snapshot: &StorageSnapshot,
+    now: SystemTime,
 ) -> Result<usize, IpcError> {
     if !config
         .completion
@@ -288,9 +419,8 @@ fn run_reconciliation_cycle(
         return Ok(0);
     }
 
-    engine.set_resolver(build_resolver(config)?);
     engine
-        .run_reconciliation_pass(SystemTime::now())
+        .run_reconciliation_pass_with_snapshot(snapshot, now)
         .map(|outcomes| outcomes.len())
         .map_err(execution_error)
 }
@@ -299,10 +429,15 @@ fn persist_engine_state(
     config: &GuardianConfig,
     engine: &AutoCleanupEngine,
 ) -> Result<(), IpcError> {
-    let state = CompletionStateStore::from_snapshot(
+    let now_unix_secs = SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let mut state = CompletionStateStore::from_snapshot(
         config.completion.dedupe_ttl_secs,
         engine.state_snapshot(),
     );
+    state.purge_expired(now_unix_secs);
     persist_completion_state(&config.completion.state_path, &state).map_err(execution_error)
 }
 
@@ -311,7 +446,7 @@ mod tests {
     use std::fs;
     #[cfg(any(unix, windows))]
     use std::process::Command;
-    use std::time::Duration;
+    use std::time::{Duration, UNIX_EPOCH};
 
     use tempfile::tempdir;
 
@@ -330,6 +465,7 @@ mod tests {
     };
     use crate::leak::LeakDetector;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
+    use crate::monitor::storage::StorageSnapshot;
     use crate::platform::current_effective_uid;
     use crate::remediation::ProcessRemediationOutcome;
 
@@ -479,8 +615,13 @@ mod tests {
         };
 
         let mut engine = build_cleanup_engine(&config).expect("engine should build");
-        let reconciled = run_reconciliation_cycle(&config, &mut engine)
-            .expect("reconciliation should skip cleanly");
+        let reconciled = run_reconciliation_cycle(
+            &config,
+            &mut engine,
+            &StorageSnapshot::default(),
+            UNIX_EPOCH,
+        )
+        .expect("reconciliation should skip cleanly");
 
         assert_eq!(reconciled, 0);
     }
@@ -548,13 +689,17 @@ mod tests {
             },
             ..GuardianConfig::default()
         };
+        let ownership = build_ownership_policy(&config);
+        let term_timeout = Duration::from_secs(1);
         let mut detector = LeakDetector::default();
 
         assert_eq!(
             run_leak_enforcement_with_inventory(
                 &config,
                 &mut detector,
-                &leak_test_inventory(77, 42, 100)
+                &leak_test_inventory(77, 42, 100),
+                &ownership,
+                term_timeout,
             )
             .expect("first sample"),
             super::LeakCleanupOutput::default()
@@ -563,7 +708,9 @@ mod tests {
             run_leak_enforcement_with_inventory(
                 &config,
                 &mut detector,
-                &leak_test_inventory(77, 42, 130)
+                &leak_test_inventory(77, 42, 130),
+                &ownership,
+                term_timeout,
             )
             .expect("second sample"),
             super::LeakCleanupOutput::default()
@@ -573,6 +720,8 @@ mod tests {
             &config,
             &mut detector,
             &leak_test_inventory(77, 42, 160),
+            &ownership,
+            term_timeout,
         )
         .expect("third sample");
 
@@ -607,6 +756,8 @@ mod tests {
             },
             ..GuardianConfig::default()
         };
+        let ownership = build_ownership_policy(&config);
+        let term_timeout = Duration::from_secs(1);
         let mut detector = LeakDetector::default();
 
         for memory_bytes in [100_u64, 130, 160] {
@@ -614,6 +765,8 @@ mod tests {
                 &config,
                 &mut detector,
                 &leak_test_inventory(child.id(), 42, memory_bytes),
+                &ownership,
+                term_timeout,
             )
             .expect("leak enforcement should run");
         }
@@ -648,6 +801,8 @@ mod tests {
             },
             ..GuardianConfig::default()
         };
+        let ownership = build_ownership_policy(&config);
+        let term_timeout = Duration::from_secs(1);
         let mut detector = LeakDetector::default();
 
         for memory_bytes in [100_u64, 130, 160] {
@@ -655,6 +810,8 @@ mod tests {
                 &config,
                 &mut detector,
                 &leak_test_inventory(child.id(), 42, memory_bytes),
+                &ownership,
+                term_timeout,
             )
             .expect("leak enforcement should run");
         }

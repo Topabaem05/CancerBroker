@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcessSample {
@@ -34,7 +34,21 @@ fn normalize_children(children_by_parent: &mut BTreeMap<u32, Vec<u32>>) {
 
 use crate::platform::process_group_id;
 
-fn get_listening_ports(pid: u32) -> Vec<u16> {
+fn refresh_processes(system: &mut sysinfo::System) {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, UpdateKind};
+
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing()
+            .with_memory()
+            .with_cpu()
+            .with_user(UpdateKind::OnlyIfNotSet)
+            .with_cmd(UpdateKind::OnlyIfNotSet),
+    );
+}
+
+fn listening_ports_by_pid() -> HashMap<u32, Vec<u16>> {
     use netstat2::{
         AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState, get_sockets_info,
     };
@@ -44,32 +58,36 @@ fn get_listening_ports(pid: u32) -> Vec<u16> {
 
     let sockets = match get_sockets_info(af_flags, proto_flags) {
         Ok(sockets) => sockets,
-        Err(_) => return Vec::new(),
+        Err(_) => return HashMap::new(),
     };
 
-    let mut ports = Vec::new();
+    let mut ports_by_pid: HashMap<u32, Vec<u16>> = HashMap::new();
     for si in sockets {
-        if !si.associated_pids.contains(&pid) {
-            continue;
-        }
-        match si.protocol_socket_info {
+        let port = match si.protocol_socket_info {
             ProtocolSocketInfo::Tcp(ref tcp_si) if tcp_si.state == TcpState::Listen => {
-                if tcp_si.local_port > 0 {
-                    ports.push(tcp_si.local_port);
-                }
+                (tcp_si.local_port > 0).then_some(tcp_si.local_port)
             }
             ProtocolSocketInfo::Udp(ref udp_si) => {
-                if udp_si.local_port > 0 {
-                    ports.push(udp_si.local_port);
-                }
+                (udp_si.local_port > 0).then_some(udp_si.local_port)
             }
-            _ => {}
+            _ => None,
+        };
+
+        let Some(port) = port else {
+            continue;
+        };
+
+        for pid in si.associated_pids {
+            ports_by_pid.entry(pid).or_default().push(port);
         }
     }
 
-    ports.sort_unstable();
-    ports.dedup();
-    ports
+    for ports in ports_by_pid.values_mut() {
+        ports.sort_unstable();
+        ports.dedup();
+    }
+
+    ports_by_pid
 }
 
 fn build_process_fingerprint(process: &ProcessSample) -> ProcessFingerprint {
@@ -136,10 +154,15 @@ impl ProcessInventory {
     }
 
     pub fn collect_live() -> Self {
-        use sysinfo::{ProcessesToUpdate, System};
+        use sysinfo::System;
 
-        let mut system = System::new_all();
-        system.refresh_processes(ProcessesToUpdate::All, true);
+        let mut system = System::new();
+        Self::collect_live_with(&mut system)
+    }
+
+    pub fn collect_live_with(system: &mut sysinfo::System) -> Self {
+        refresh_processes(system);
+        let ports_by_pid = listening_ports_by_pid();
 
         Self::from_samples(system.processes().values().map(|process| {
             let command = if process.cmd().is_empty() {
@@ -155,7 +178,7 @@ impl ProcessInventory {
 
             let pid_u32 = process.pid().as_u32();
             let pgid = process_group_id(pid_u32);
-            let listening_ports = get_listening_ports(pid_u32);
+            let listening_ports = ports_by_pid.get(&pid_u32).cloned().unwrap_or_default();
 
             ProcessSample {
                 pid: pid_u32,

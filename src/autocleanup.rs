@@ -13,7 +13,7 @@ use crate::dispatch::{CleanupDispatcher, DispatchDecision};
 use crate::ipc::IpcError;
 #[cfg(any(unix, windows))]
 use crate::ipc::receive_completion_events_once;
-use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
+use crate::monitor::resources::{ProcessResourceReport, collect_process_resources_batch};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -126,6 +126,15 @@ impl AutoCleanupEngine {
         now: SystemTime,
     ) -> Result<Vec<AutoCleanupResult>, AutoCleanupError> {
         let events = infer_reconciliation_events(&self.settings.cleanup_policy.allowlist, now)?;
+        run_reconciliation(self, &events, now)
+    }
+
+    pub fn run_reconciliation_pass_with_snapshot(
+        &mut self,
+        snapshot: &StorageSnapshot,
+        now: SystemTime,
+    ) -> Result<Vec<AutoCleanupResult>, AutoCleanupError> {
+        let events = infer_reconciliation_events_from_snapshot(snapshot, now);
         run_reconciliation(self, &events, now)
     }
 
@@ -249,12 +258,19 @@ pub fn infer_reconciliation_events(
     now: SystemTime,
 ) -> Result<Vec<CompletionEvent>, std::io::Error> {
     let snapshot = scan_allowlisted_roots(allowlisted_roots)?;
-    let session_ids = collect_session_ids_from_snapshot(&snapshot);
+    Ok(infer_reconciliation_events_from_snapshot(&snapshot, now))
+}
 
-    Ok(session_ids
+pub fn infer_reconciliation_events_from_snapshot(
+    snapshot: &StorageSnapshot,
+    now: SystemTime,
+) -> Vec<CompletionEvent> {
+    let session_ids = collect_session_ids_from_snapshot(snapshot);
+
+    session_ids
         .into_iter()
         .map(|session_id| build_inferred_completion_event(session_id, now))
-        .collect())
+        .collect()
 }
 
 impl AutoCleanupEngine {
@@ -292,6 +308,13 @@ impl AutoCleanupEngine {
         let mut process_outcomes = Vec::with_capacity(resolved.processes.len());
         let mut seen_pgids = std::collections::BTreeSet::new();
         let mut group_leaders: Vec<(u32, crate::safety::ProcessIdentity)> = Vec::new();
+        let mut resources_by_pid = collect_process_resources_batch(
+            &resolved
+                .processes
+                .iter()
+                .map(|identity| identity.pid)
+                .collect::<Vec<_>>(),
+        );
 
         for identity in &resolved.processes {
             let outcome = remediate_process(&ProcessRemediationRequest {
@@ -310,7 +333,9 @@ impl AutoCleanupEngine {
 
             process_outcomes.push(ProcessCleanupResult {
                 pid: identity.pid,
-                resources: collect_process_resources(identity.pid),
+                resources: resources_by_pid
+                    .remove(&identity.pid)
+                    .unwrap_or_else(|| ProcessResourceReport::empty(identity.pid)),
                 outcome,
             });
         }
@@ -340,6 +365,10 @@ fn collect_session_ids_from_snapshot(snapshot: &StorageSnapshot) -> BTreeSet<Str
     let mut session_ids = BTreeSet::new();
 
     for artifact in &snapshot.artifacts {
+        if !artifact.path.is_file() {
+            continue;
+        }
+
         let text = artifact.path.to_string_lossy();
         for session_id in session_ids_in_text(&text) {
             session_ids.insert(session_id);
@@ -369,7 +398,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        AutoCleanupEngine, AutoCleanupSettings, infer_reconciliation_events, unix_timestamp_secs,
+        AutoCleanupEngine, AutoCleanupSettings, infer_reconciliation_events,
+        infer_reconciliation_events_from_snapshot, unix_timestamp_secs,
     };
     use crate::cleanup::CleanupPolicy;
     use crate::completion::CompletionSource;
@@ -425,6 +455,28 @@ mod tests {
 
         let events = infer_reconciliation_events(&[dir.path().to_path_buf()], UNIX_EPOCH)
             .expect("non-session artifacts should not fail");
+
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn infer_reconciliation_events_from_snapshot_skips_removed_artifacts() {
+        let dir = tempdir().expect("tempdir");
+        let artifact = dir.path().join("ses_alpha_artifact.json");
+        fs::write(&artifact, "{}").expect("artifact should be written");
+
+        let snapshot = crate::monitor::storage::StorageSnapshot {
+            artifacts: vec![crate::monitor::storage::ArtifactRecord {
+                path: artifact.clone(),
+                bytes: 2,
+                modified_at: UNIX_EPOCH,
+            }],
+            total_bytes: 2,
+        };
+
+        fs::remove_file(&artifact).expect("artifact should be removed");
+
+        let events = infer_reconciliation_events_from_snapshot(&snapshot, UNIX_EPOCH);
 
         assert!(events.is_empty());
     }

@@ -17,7 +17,7 @@ use crate::config::{GuardianConfig, load_config};
 use crate::evidence::default_evidence_dir;
 use crate::leak::{LeakCandidate, LeakDetector};
 use crate::monitor::process::{ProcessInventory, ProcessSample};
-use crate::monitor::resources::{ProcessResourceReport, collect_process_resources};
+use crate::monitor::resources::{ProcessResourceReport, collect_process_resources_batch};
 use crate::platform::current_effective_uid;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 use crate::safety::OwnershipPolicy;
@@ -181,7 +181,7 @@ fn matches_command_markers(command: &str, required_command_markers: &[String]) -
 }
 
 fn serialize_tool_output<T: Serialize>(output: &T) -> Result<String, String> {
-    serde_json::to_string_pretty(output).map_err(|error| error.to_string())
+    serde_json::to_string(output).map_err(|error| error.to_string())
 }
 
 fn build_status_output(config: &GuardianConfig, config_path: Option<&Path>) -> StatusToolOutput {
@@ -247,14 +247,26 @@ fn build_scan_resources_output(
     inventory: &ProcessInventory,
     required_command_markers: &[String],
 ) -> ScanResourcesToolOutput {
-    let processes: Vec<_> = inventory
+    let selected_samples: Vec<_> = inventory
         .samples()
         .filter(|sample| matches_command_markers(&sample.command, required_command_markers))
+        .collect();
+
+    let mut resources_by_pid = collect_process_resources_batch(
+        &selected_samples
+            .iter()
+            .map(|sample| sample.pid)
+            .collect::<Vec<_>>(),
+    );
+    let processes: Vec<_> = selected_samples
+        .into_iter()
         .map(|sample| ScanResourcesProcessOutput {
             pid: sample.pid,
             command: sample.command.clone(),
             listening_ports: sample.listening_ports.clone(),
-            resources: collect_process_resources(sample.pid),
+            resources: resources_by_pid
+                .remove(&sample.pid)
+                .unwrap_or_else(|| ProcessResourceReport::empty(sample.pid)),
         })
         .collect();
 
@@ -697,8 +709,8 @@ mod tests {
         let server = CancerBrokerMcp::new(None).expect("server");
         let output = server.status().await.expect("status output");
 
-        assert!(output.contains("\"config_source\": \"default\""));
-        assert!(output.contains("\"mode\": \"observe\""));
+        assert!(output.contains("\"config_source\":\"default\""));
+        assert!(output.contains("\"mode\":\"observe\""));
     }
 
     #[tokio::test]
@@ -799,7 +811,7 @@ mod tests {
             .and_then(|content| content.first())
             .and_then(|content| content["text"].as_str())
             .expect("tool text response");
-        assert!(text.contains("\"mode\": \"observe\""));
+        assert!(text.contains("\"mode\":\"observe\""));
 
         drop(client_transport);
         server_task.await.expect("server task");

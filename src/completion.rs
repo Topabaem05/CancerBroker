@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::BufWriter;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -195,6 +196,13 @@ impl CompletionStateStore {
         );
     }
 
+    pub fn purge_expired(&mut self, now_unix_secs: u64) {
+        self.entries.retain(|_, entry| {
+            entry.state == CompletionRecordState::Pending
+                || now_unix_secs.saturating_sub(entry.updated_at_unix_secs) <= self.dedupe_ttl_secs
+        });
+    }
+
     pub fn pending_keys(&self) -> Vec<String> {
         self.entries
             .values()
@@ -339,12 +347,14 @@ pub fn persist_completion_state(
         })?;
     }
 
-    let json = serde_json::to_string_pretty(&store.snapshot())
-        .map_err(CompletionStateIoError::Serialize)?;
-    fs::write(path, json).map_err(|source| CompletionStateIoError::Io {
+    let file = fs::File::create(path).map_err(|source| CompletionStateIoError::Io {
         path: path.display().to_string(),
         source,
-    })
+    })?;
+    let writer = BufWriter::new(file);
+
+    serde_json::to_writer_pretty(writer, &store.snapshot())
+        .map_err(CompletionStateIoError::Serialize)
 }
 
 #[cfg(test)]
@@ -451,5 +461,30 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].state, CompletionRecordState::Pending);
         assert_eq!(snapshot.entries[0].updated_at_unix_secs, 81);
+    }
+
+    #[test]
+    fn purge_expired_removes_old_processed_entries_but_keeps_pending() {
+        let mut store = CompletionStateStore::new(60);
+        let event_a = CompletionEvent {
+            event_id: "evt-a".to_string(),
+            session_id: Some("ses-a".to_string()),
+            ..sample_event(CompletionSource::Status)
+        };
+        let event_b = sample_event(CompletionSource::Idle);
+
+        assert_eq!(store.begin(&event_a, 10), CompletionStoreBegin::Accepted);
+        store.mark_processed(&event_a, 10);
+
+        assert_eq!(store.begin(&event_b, 10), CompletionStoreBegin::Accepted);
+
+        assert_eq!(store.snapshot().entries.len(), 2);
+
+        store.purge_expired(80);
+        assert_eq!(store.snapshot().entries.len(), 1);
+        assert_eq!(
+            store.snapshot().entries[0].state,
+            CompletionRecordState::Pending
+        );
     }
 }
