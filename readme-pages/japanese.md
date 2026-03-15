@@ -37,6 +37,7 @@ cancerbroker setup
 
 - `cancerbroker mcp` を使って CancerBroker をローカル Opencode MCP サーバーとして登録する
 - rust-analyzer メモリガード設定を `~/.config/cancerbroker/config.toml` に書き込む
+- ターミナル UI の初期化に失敗した場合は line-based wizard にフォールバックする
 
 プロンプトなしでマシン推奨の既定値を使いたい場合は、非対話モードを使います。
 
@@ -87,10 +88,11 @@ cancerbroker setup
 代表的な wizard フロー:
 
 ```text
-Header: 検出した RAM、現在のステップ、setup 対象
-Body: 現在の設定値、説明、編集可能な値またはトグル
-Summary: enabled 状態、memory cap、sample 数、startup grace、cooldown
-Controls: Enter で確定、Up で前へ、数字で数値編集、Esc でキャンセル
+Header box: 検出した RAM、現在のステップ、setup 対象
+Step box: タイトル、説明、入力、ヘルプ/検証パネル
+Summary box: enabled 状態、memory cap、sample 数、startup grace、cooldown
+Controls box: Enter で確定、Up で前へ、Left/Right/Space で enabled 切り替え、数字と Backspace で数値編集、Esc でキャンセル
+Too-small box: ターミナルが小さすぎる場合の resize 案内
 ```
 
 補足:

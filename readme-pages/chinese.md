@@ -37,6 +37,7 @@ cancerbroker setup
 
 - 使用 `cancerbroker mcp` 将 CancerBroker 注册为本地 Opencode MCP 服务器
 - 将 rust-analyzer 内存保护设置写入 `~/.config/cancerbroker/config.toml`
+- 如果终端 UI 初始化失败，则回退到逐行向导
 
 如果你想直接使用当前机器推荐的默认值而不进行交互，可使用非交互模式：
 
@@ -87,10 +88,11 @@ cancerbroker setup
 代表性的向导流程：
 
 ```text
-Header: 检测到的 RAM、当前步骤、setup 目标
-Body: 当前设置、说明，以及可编辑的数值或开关
-Summary: enabled 状态、memory cap、样本次数、startup grace、cooldown
-Controls: Enter 确认，Up 返回，数字键编辑数值，Esc 取消
+Header box: 检测到的 RAM、当前步骤、setup 目标
+Step box: 标题、说明、输入区、帮助/校验面板
+Summary box: enabled 状态、memory cap、样本次数、startup grace、cooldown
+Controls box: Enter 确认，Up 返回，Left/Right/Space 切换 enabled，数字键和 Backspace 编辑数值，Esc 取消
+Too-small box: 终端过小时显示 resize 提示
 ```
 
 说明：

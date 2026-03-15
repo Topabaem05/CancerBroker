@@ -37,6 +37,7 @@ Ahora este comando abre un asistente interactivo de terminal en TTY y luego:
 
 - registra CancerBroker como un servidor MCP local de Opencode mediante `cancerbroker mcp`
 - escribe la configuración del guard de memoria de rust-analyzer en `~/.config/cancerbroker/config.toml`
+- vuelve al asistente en línea si la inicialización de la UI de terminal falla
 
 Usa el modo no interactivo cuando quieras aplicar los valores recomendados para la máquina sin preguntas:
 
@@ -87,10 +88,11 @@ cancerbroker setup
 Flujo representativo del asistente:
 
 ```text
-Header: RAM detectada, paso actual y objetivos de setup
-Cuerpo: ajuste actual, explicación y valor editable o selector
-Resumen: estado enabled, memory cap, número de muestras, startup grace y cooldown
-Controles: Enter confirma, Up vuelve atrás, los dígitos editan valores numéricos y Esc cancela
+Header box: RAM detectada, paso actual y objetivos de setup
+Step box: título, descripción, entrada y paneles de ayuda/validación
+Summary box: estado enabled, memory cap, número de muestras, startup grace y cooldown
+Controls box: Enter confirma, Up vuelve atrás, Left/Right/Space cambian el estado enabled, los dígitos y Backspace editan valores numéricos y Esc cancela
+Too-small box: aviso para redimensionar cuando la terminal es demasiado pequeña
 ```
 
 Notas:

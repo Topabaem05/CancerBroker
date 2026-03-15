@@ -37,6 +37,7 @@ cancerbroker setup
 
 - `cancerbroker mcp`를 사용해 CancerBroker를 로컬 Opencode MCP 서버로 등록
 - rust-analyzer 메모리 가드 설정을 `~/.config/cancerbroker/config.toml`에 기록
+- 터미널 UI 초기화에 실패하면 기존 line-based wizard로 fallback
 
 프롬프트 없이 현재 머신에 맞는 권장 기본값만 적용하려면 non-interactive 모드를 사용합니다.
 
@@ -87,10 +88,11 @@ cancerbroker setup
 대표적인 wizard 흐름:
 
 ```text
-Header: 감지된 RAM, 현재 단계, setup 대상
-Body: 현재 설정값, 설명, 수정 가능한 값 또는 토글
-Summary: enabled 여부, memory cap, sample 수, startup grace, cooldown
-Controls: Enter 확인, Up 이전 단계, 숫자 입력으로 값 수정, Esc 취소
+Header box: 감지된 RAM, 현재 단계, setup 대상
+Step box: 제목, 설명, 입력, 도움말/검증 패널
+Summary box: enabled 여부, memory cap, sample 수, startup grace, cooldown
+Controls box: Enter 확인, Up 이전 단계, Left/Right/Space로 enabled 토글, 숫자와 Backspace로 값 수정, Esc 취소
+Too-small box: 터미널이 너무 작을 때 표시되는 resize 안내
 ```
 
 참고:
