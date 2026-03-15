@@ -3,6 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use notify::event::{CreateKind, ModifyKind, RenameMode};
+use notify::{Event, EventKind};
+
 #[derive(Debug, Clone)]
 pub struct ArtifactRecord {
     pub path: PathBuf,
@@ -28,6 +31,152 @@ fn finalize_snapshot(mut artifacts: Vec<ArtifactRecord>) -> StorageSnapshot {
         artifacts,
         total_bytes,
     }
+}
+
+fn find_artifact(snapshot: &StorageSnapshot, path: &Path) -> Result<usize, usize> {
+    snapshot
+        .artifacts
+        .binary_search_by(|artifact| artifact.path.as_path().cmp(path))
+}
+
+fn refresh_totals(snapshot: &mut StorageSnapshot) {
+    snapshot.total_bytes = snapshot.artifacts.iter().fold(0_u64, |total, artifact| {
+        total.saturating_add(artifact.bytes)
+    });
+}
+
+fn artifact_from_path(path: &Path) -> std::io::Result<Option<ArtifactRecord>> {
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+
+    Ok(Some(ArtifactRecord {
+        path: path.to_path_buf(),
+        bytes: metadata.len(),
+        modified_at: metadata.modified()?,
+    }))
+}
+
+fn artifacts_from_path(path: &Path) -> std::io::Result<Vec<ArtifactRecord>> {
+    let metadata = fs::metadata(path)?;
+    if metadata.is_dir() {
+        let mut artifacts = Vec::new();
+        walk_files(path, &mut artifacts)?;
+        return Ok(artifacts);
+    }
+
+    Ok(artifact_from_path(path)?.into_iter().collect())
+}
+
+pub fn upsert_artifact(snapshot: &mut StorageSnapshot, artifact: ArtifactRecord) -> bool {
+    match find_artifact(snapshot, &artifact.path) {
+        Ok(index) => {
+            if snapshot.artifacts[index].bytes == artifact.bytes
+                && snapshot.artifacts[index].modified_at == artifact.modified_at
+            {
+                return false;
+            }
+
+            snapshot.total_bytes = snapshot
+                .total_bytes
+                .saturating_sub(snapshot.artifacts[index].bytes)
+                .saturating_add(artifact.bytes);
+            snapshot.artifacts[index] = artifact;
+            true
+        }
+        Err(index) => {
+            snapshot.total_bytes = snapshot.total_bytes.saturating_add(artifact.bytes);
+            snapshot.artifacts.insert(index, artifact);
+            true
+        }
+    }
+}
+
+pub fn remove_artifacts_at_or_under(snapshot: &mut StorageSnapshot, path: &Path) -> bool {
+    let original_len = snapshot.artifacts.len();
+    snapshot
+        .artifacts
+        .retain(|artifact| !artifact.path.starts_with(path));
+
+    if snapshot.artifacts.len() == original_len {
+        return false;
+    }
+
+    refresh_totals(snapshot);
+    true
+}
+
+fn refresh_paths(snapshot: &mut StorageSnapshot, paths: &[PathBuf]) -> bool {
+    if paths.is_empty() {
+        return false;
+    }
+
+    for path in paths {
+        let Ok(artifacts) = artifacts_from_path(path) else {
+            return false;
+        };
+        for artifact in artifacts {
+            upsert_artifact(snapshot, artifact);
+        }
+    }
+
+    true
+}
+
+fn apply_rename(snapshot: &mut StorageSnapshot, paths: &[PathBuf]) -> bool {
+    if paths.len() != 2 {
+        return false;
+    }
+
+    let from = &paths[0];
+    let to = &paths[1];
+
+    remove_artifacts_at_or_under(snapshot, from);
+    refresh_paths(snapshot, std::slice::from_ref(to))
+}
+
+fn try_apply_watch_event(snapshot: &mut StorageSnapshot, event: &Event) -> bool {
+    if event.need_rescan() {
+        return false;
+    }
+
+    match event.kind {
+        EventKind::Access(_) => true,
+        EventKind::Create(CreateKind::File)
+        | EventKind::Create(CreateKind::Folder)
+        | EventKind::Create(CreateKind::Any)
+        | EventKind::Create(CreateKind::Other)
+        | EventKind::Modify(ModifyKind::Data(_))
+        | EventKind::Modify(ModifyKind::Metadata(_)) => refresh_paths(snapshot, &event.paths),
+        EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+            apply_rename(snapshot, &event.paths)
+        }
+        EventKind::Remove(_) => {
+            !event.paths.is_empty()
+                && event.paths.iter().fold(false, |changed, path| {
+                    changed | remove_artifacts_at_or_under(snapshot, path)
+                })
+        }
+        _ => false,
+    }
+}
+
+pub fn try_apply_watch_events_incremental(
+    snapshot: &mut StorageSnapshot,
+    events: &[Event],
+) -> bool {
+    if events.is_empty() {
+        return true;
+    }
+
+    for event in events {
+        if !try_apply_watch_event(snapshot, event) {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn stale_artifact_path(
@@ -109,12 +258,23 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, UNIX_EPOCH};
 
+    use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
+    use notify::{Event, EventKind};
     use tempfile::tempdir;
 
     use super::{
         ArtifactRecord, StorageSnapshot, finalize_snapshot, merge_watch_events_with_scan,
         scan_allowlisted_roots, stale_artifact_path, stale_artifacts,
+        try_apply_watch_events_incremental, upsert_artifact,
     };
+
+    fn watch_event(kind: EventKind, paths: Vec<PathBuf>) -> Event {
+        Event {
+            kind,
+            paths,
+            attrs: Default::default(),
+        }
+    }
 
     #[test]
     fn finalize_snapshot_sorts_dedupes_and_sums_bytes() {
@@ -233,5 +393,112 @@ mod tests {
         );
 
         assert_eq!(stale, vec![PathBuf::from("/tmp/old.json")]);
+    }
+
+    #[test]
+    fn upsert_artifact_keeps_snapshot_sorted() {
+        let mut snapshot = StorageSnapshot::default();
+
+        upsert_artifact(
+            &mut snapshot,
+            ArtifactRecord {
+                path: "/tmp/b.json".into(),
+                bytes: 2,
+                modified_at: UNIX_EPOCH,
+            },
+        );
+        upsert_artifact(
+            &mut snapshot,
+            ArtifactRecord {
+                path: "/tmp/a.json".into(),
+                bytes: 1,
+                modified_at: UNIX_EPOCH,
+            },
+        );
+
+        assert_eq!(snapshot.artifacts[0].path, PathBuf::from("/tmp/a.json"));
+        assert_eq!(snapshot.artifacts[1].path, PathBuf::from("/tmp/b.json"));
+        assert_eq!(snapshot.total_bytes, 3);
+    }
+
+    #[test]
+    fn try_apply_watch_events_incremental_tracks_file_lifecycle() {
+        let dir = tempdir().expect("tempdir");
+        let artifact = dir.path().join("a.json");
+        let mut snapshot = StorageSnapshot::default();
+
+        fs::write(&artifact, "abc").expect("artifact should be written");
+        assert!(try_apply_watch_events_incremental(
+            &mut snapshot,
+            &[watch_event(
+                EventKind::Create(CreateKind::File),
+                vec![artifact.clone()],
+            )],
+        ));
+        assert_eq!(snapshot.total_bytes, 3);
+
+        fs::write(&artifact, "abcdef").expect("artifact should be updated");
+        assert!(try_apply_watch_events_incremental(
+            &mut snapshot,
+            &[watch_event(
+                EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+                vec![artifact.clone()],
+            )],
+        ));
+        assert_eq!(snapshot.total_bytes, 6);
+
+        fs::remove_file(&artifact).expect("artifact should be removed");
+        assert!(try_apply_watch_events_incremental(
+            &mut snapshot,
+            &[watch_event(
+                EventKind::Remove(RemoveKind::File),
+                vec![artifact],
+            )],
+        ));
+        assert!(snapshot.artifacts.is_empty());
+        assert_eq!(snapshot.total_bytes, 0);
+    }
+
+    #[test]
+    fn try_apply_watch_events_incremental_renames_file() {
+        let dir = tempdir().expect("tempdir");
+        let old_path = dir.path().join("old.json");
+        let new_path = dir.path().join("new.json");
+        fs::write(&old_path, "abc").expect("old artifact should exist");
+
+        let mut snapshot = scan_allowlisted_roots(&[dir.path().to_path_buf()]).expect("scan");
+        fs::rename(&old_path, &new_path).expect("rename should succeed");
+
+        assert!(try_apply_watch_events_incremental(
+            &mut snapshot,
+            &[watch_event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+                vec![old_path, new_path.clone()],
+            )],
+        ));
+        assert_eq!(snapshot.artifacts.len(), 1);
+        assert_eq!(snapshot.artifacts[0].path, new_path);
+    }
+
+    #[test]
+    fn try_apply_watch_events_incremental_renames_directory_subtree() {
+        let dir = tempdir().expect("tempdir");
+        let nested = dir.path().join("nested");
+        let renamed = dir.path().join("renamed");
+        fs::create_dir_all(&nested).expect("nested dir");
+        fs::write(nested.join("artifact.json"), "abc").expect("artifact should exist");
+
+        let mut snapshot = scan_allowlisted_roots(&[dir.path().to_path_buf()]).expect("scan");
+        fs::rename(&nested, &renamed).expect("rename should succeed");
+
+        assert!(try_apply_watch_events_incremental(
+            &mut snapshot,
+            &[watch_event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+                vec![nested, renamed.clone()],
+            )],
+        ));
+        assert_eq!(snapshot.artifacts.len(), 1);
+        assert_eq!(snapshot.artifacts[0].path, renamed.join("artifact.json"));
     }
 }

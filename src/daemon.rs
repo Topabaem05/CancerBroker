@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, SystemTime};
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 
 use crate::autocleanup::{AutoCleanupEngine, AutoCleanupSettings};
@@ -16,7 +16,9 @@ use crate::dispatch::CleanupDispatcher;
 use crate::ipc::{CompletionEventListener, IpcError, receive_completion_events_once};
 use crate::leak::LeakDetector;
 use crate::monitor::process::ProcessInventory;
-use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
+use crate::monitor::storage::{
+    StorageSnapshot, scan_allowlisted_roots, try_apply_watch_events_incremental,
+};
 use crate::platform::current_effective_uid;
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -55,11 +57,10 @@ pub struct DaemonRunOptions {
 struct StorageSnapshotCache {
     allowlisted_roots: Vec<PathBuf>,
     snapshot: StorageSnapshot,
-    watcher: Option<RecommendedWatcher>,
+    _watcher: Option<RecommendedWatcher>,
     watch_events: Option<Receiver<notify::Result<notify::Event>>>,
     snapshot_used: bool,
     fallback_rescan_each_cycle: bool,
-    dirty: bool,
 }
 
 impl Default for DaemonRunOptions {
@@ -118,52 +119,71 @@ impl StorageSnapshotCache {
         Ok(Self {
             allowlisted_roots: allowlisted_roots.to_vec(),
             snapshot,
-            watcher,
+            _watcher: watcher,
             watch_events,
             snapshot_used: false,
             fallback_rescan_each_cycle,
-            dirty: false,
         })
     }
 
     fn refresh_if_needed(&mut self) -> Result<&StorageSnapshot, IpcError> {
+        let requires_rescan = self.apply_pending_watch_events();
+
         if self.snapshot_used {
-            self.dirty |= self.take_watch_events();
-            if self.fallback_rescan_each_cycle {
-                self.dirty = true;
+            if self.fallback_rescan_each_cycle || requires_rescan {
+                self.snapshot =
+                    scan_allowlisted_roots(&self.allowlisted_roots).map_err(execution_error)?;
             }
         } else {
-            self.dirty |= self.take_watch_events();
             self.snapshot_used = true;
+            if requires_rescan {
+                self.snapshot =
+                    scan_allowlisted_roots(&self.allowlisted_roots).map_err(execution_error)?;
+            }
         }
 
-        if self.dirty {
-            self.snapshot =
-                scan_allowlisted_roots(&self.allowlisted_roots).map_err(execution_error)?;
-            self.dirty = false;
-        }
-
-        let _keep_watcher_alive = &self.watcher;
         Ok(&self.snapshot)
     }
 
-    fn take_watch_events(&mut self) -> bool {
-        let Some(watch_events) = &self.watch_events else {
+    fn apply_pending_watch_events(&mut self) -> bool {
+        if self.fallback_rescan_each_cycle {
+            return self.snapshot_used;
+        }
+
+        let Some(events) = self.take_watch_events() else {
             return false;
         };
 
-        let mut dirty = false;
+        if try_apply_watch_events_incremental(&mut self.snapshot, &events) {
+            return false;
+        }
+
+        true
+    }
+
+    fn take_watch_events(&mut self) -> Option<Vec<Event>> {
+        let Some(watch_events) = &self.watch_events else {
+            return None;
+        };
+
+        let mut events = Vec::new();
         while let Ok(result) = watch_events.try_recv() {
-            dirty = true;
-            if result.is_err() {
-                self.fallback_rescan_each_cycle = true;
-                self.watch_events = None;
-                self.watcher = None;
-                break;
+            match result {
+                Ok(event) => events.push(event),
+                Err(_) => {
+                    self.fallback_rescan_each_cycle = true;
+                    self.watch_events = None;
+                    self._watcher = None;
+                    return Some(Vec::new());
+                }
             }
         }
 
-        dirty
+        if events.is_empty() {
+            None
+        } else {
+            Some(events)
+        }
     }
 }
 
@@ -446,14 +466,18 @@ mod tests {
     use std::fs;
     #[cfg(any(unix, windows))]
     use std::process::Command;
+    use std::sync::mpsc;
     use std::time::{Duration, UNIX_EPOCH};
 
+    use notify::event::{DataChange, ModifyKind};
+    use notify::{Event, EventKind};
     use tempfile::tempdir;
 
     use super::{
-        DaemonRunOptions, build_cleanup_engine, build_cleanup_settings, build_daemon_output,
-        build_ownership_policy, build_resolver, execution_error, process_event_batch,
-        remediation_succeeded, run_leak_enforcement_with_inventory, run_reconciliation_cycle,
+        DaemonRunOptions, StorageSnapshotCache, build_cleanup_engine, build_cleanup_settings,
+        build_daemon_output, build_ownership_policy, build_resolver, execution_error,
+        process_event_batch, remediation_succeeded, run_leak_enforcement_with_inventory,
+        run_reconciliation_cycle,
     };
     use crate::completion::{
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
@@ -465,7 +489,7 @@ mod tests {
     };
     use crate::leak::LeakDetector;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
-    use crate::monitor::storage::StorageSnapshot;
+    use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
     use crate::platform::current_effective_uid;
     use crate::remediation::ProcessRemediationOutcome;
 
@@ -478,6 +502,14 @@ mod tests {
             tool_name: None,
             completed_at: "2026-03-08T20:00:00Z".to_string(),
             source,
+        }
+    }
+
+    fn watch_event(kind: EventKind, paths: Vec<std::path::PathBuf>) -> Event {
+        Event {
+            kind,
+            paths,
+            attrs: Default::default(),
         }
     }
 
@@ -631,6 +663,62 @@ mod tests {
         let error = execution_error("boom");
 
         assert_eq!(error.to_string(), "execution_failed: boom");
+    }
+
+    #[test]
+    fn storage_snapshot_cache_applies_incremental_file_updates() {
+        let dir = tempdir().expect("tempdir");
+        let artifact = dir.path().join("artifact.json");
+        fs::write(&artifact, "abc").expect("artifact should exist");
+        let (tx, rx) = mpsc::channel();
+        let mut cache = StorageSnapshotCache {
+            allowlisted_roots: vec![dir.path().to_path_buf()],
+            snapshot: scan_allowlisted_roots(&[dir.path().to_path_buf()]).expect("scan"),
+            _watcher: None,
+            watch_events: Some(rx),
+            snapshot_used: true,
+            fallback_rescan_each_cycle: false,
+        };
+
+        fs::write(&artifact, "abcdef").expect("artifact should be updated");
+        tx.send(Ok(watch_event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            vec![artifact.clone()],
+        )))
+        .expect("event should send");
+
+        let snapshot = cache.refresh_if_needed().expect("refresh should succeed");
+
+        assert_eq!(snapshot.total_bytes, 6);
+        assert_eq!(snapshot.artifacts.len(), 1);
+        assert_eq!(snapshot.artifacts[0].path, artifact);
+        assert_eq!(snapshot.artifacts[0].bytes, 6);
+    }
+
+    #[test]
+    fn storage_snapshot_cache_falls_back_to_full_rescan_for_ambiguous_events() {
+        let dir = tempdir().expect("tempdir");
+        let artifact = dir.path().join("artifact.json");
+        fs::write(&artifact, "abc").expect("artifact should exist");
+        let (tx, rx) = mpsc::channel();
+        let mut cache = StorageSnapshotCache {
+            allowlisted_roots: vec![dir.path().to_path_buf()],
+            snapshot: scan_allowlisted_roots(&[dir.path().to_path_buf()]).expect("scan"),
+            _watcher: None,
+            watch_events: Some(rx),
+            snapshot_used: true,
+            fallback_rescan_each_cycle: false,
+        };
+
+        fs::write(&artifact, "abcdef").expect("artifact should be updated");
+        tx.send(Ok(watch_event(EventKind::Any, vec![artifact.clone()])))
+            .expect("event should send");
+
+        let snapshot = cache.refresh_if_needed().expect("refresh should succeed");
+
+        assert_eq!(snapshot.artifacts.len(), 1);
+        assert_eq!(snapshot.artifacts[0].path, artifact);
+        assert_eq!(snapshot.artifacts[0].bytes, 6);
     }
 
     #[test]
