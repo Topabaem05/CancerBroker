@@ -333,9 +333,9 @@ mod tests {
 
     use super::{
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
-        DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST, GuardianConfig, LeakDetectionPolicy,
-        Mode, RustAnalyzerMemoryGuardPolicy, default_completion_state_path,
-        default_guardian_config_path, load_config,
+        DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH, DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST,
+        GuardianConfig, LeakDetectionPolicy, Mode, RustAnalyzerMemoryGuardPolicy,
+        default_completion_state_path, default_guardian_config_path, load_config,
     };
 
     fn fixture_config_path(name: &str) -> PathBuf {
@@ -446,9 +446,10 @@ mod tests {
 
     #[test]
     fn default_guardian_config_path_uses_home_directory() {
+        let home = PathBuf::from("/tmp/home");
         assert_eq!(
-            default_guardian_config_path(PathBuf::from("/tmp/home").as_path()),
-            PathBuf::from("/tmp/home/.config/cancerbroker/config.toml")
+            default_guardian_config_path(home.as_path()),
+            home.join(DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH)
         );
     }
 

@@ -499,7 +499,7 @@ mod tests {
         opencode_config_path, read_guardian_config_document, recommended_memory_defaults,
         uninstall_opencode, update_guardian_config, update_opencode_config,
     };
-    use crate::config::GuardianConfig;
+    use crate::config::{GuardianConfig, default_guardian_config_path};
     use crate::setup_ui::SetupWizardAnswers;
 
     #[test]
@@ -512,9 +512,10 @@ mod tests {
 
     #[test]
     fn guardian_config_path_uses_default_home_path() {
+        let home = PathBuf::from("/tmp/home");
         assert_eq!(
-            guardian_config_path(PathBuf::from("/tmp/home").as_path()),
-            PathBuf::from("/tmp/home/.config/cancerbroker/config.toml")
+            guardian_config_path(home.as_path()),
+            default_guardian_config_path(home.as_path())
         );
     }
 

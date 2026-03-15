@@ -492,7 +492,7 @@ mod tests {
         build_scan_resources_output, build_status_output, default_config_path, list_evidence_files,
         matches_command_markers, resolve_server_config_path, serialize_tool_output,
     };
-    use crate::config::{GuardianConfig, LeakDetectionPolicy};
+    use crate::config::{GuardianConfig, LeakDetectionPolicy, default_guardian_config_path};
     use crate::leak::LeakDetector;
     use crate::monitor::process::{ProcessInventory, ProcessSample};
     use crate::platform::current_effective_uid;
@@ -567,9 +567,10 @@ mod tests {
 
     #[test]
     fn default_config_path_uses_home_directory() {
+        let home = PathBuf::from("/tmp/home");
         assert_eq!(
-            default_config_path(Some(PathBuf::from("/tmp/home").as_path())),
-            Some(PathBuf::from("/tmp/home/.config/cancerbroker/config.toml"))
+            default_config_path(Some(home.as_path())),
+            Some(default_guardian_config_path(home.as_path()))
         );
     }
 
@@ -578,7 +579,7 @@ mod tests {
         let cli = Some(PathBuf::from("/tmp/cli.toml"));
         let env = Some(PathBuf::from("/tmp/env.toml"));
         let home = tempdir().expect("tempdir");
-        let home_config = home.path().join(".config/cancerbroker/config.toml");
+        let home_config = default_guardian_config_path(home.path());
         fs::create_dir_all(home_config.parent().expect("config parent")).expect("config dir");
         fs::write(&home_config, "mode = \"observe\"\n").expect("config file");
 
