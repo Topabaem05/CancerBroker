@@ -338,6 +338,13 @@ mod tests {
         default_guardian_config_path, load_config,
     };
 
+    fn fixture_config_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures")
+            .join("config")
+            .join(name)
+    }
+
     #[test]
     fn defaults_keep_opencode_paths_and_markers() {
         let config = GuardianConfig::default();
@@ -500,5 +507,39 @@ mod tests {
         assert_eq!(config.rust_analyzer_memory_guard.startup_grace_secs, 60);
         assert_eq!(config.rust_analyzer_memory_guard.cooldown_secs, 120);
         assert!(!config.rust_analyzer_memory_guard.same_uid_only);
+    }
+
+    #[test]
+    fn load_config_supports_ra_guard_minimal_fixture() {
+        let path = fixture_config_path("rust-analyzer-guard-minimal.toml");
+
+        let config = load_config(&path).expect("ra-guard minimal fixture should load");
+
+        assert_eq!(config.mode, Mode::Observe);
+        assert!(config.rust_analyzer_memory_guard.enabled);
+        assert_eq!(
+            config.rust_analyzer_memory_guard,
+            RustAnalyzerMemoryGuardPolicy::default()
+        );
+    }
+
+    #[test]
+    fn load_config_keeps_existing_completion_fixture_compatible() {
+        let path = fixture_config_path("completion-cleanup.toml");
+
+        let config = load_config(&path).expect("completion fixture should load");
+
+        assert_eq!(config.mode, Mode::Observe);
+        assert_eq!(config.completion.dedupe_ttl_secs, 600);
+        assert_eq!(config.completion.cleanup_retry_interval_secs, 15);
+        assert_eq!(config.completion.reconciliation_interval_secs, 60);
+        assert_eq!(
+            config.completion.daemon_socket_path,
+            PathBuf::from("/tmp/cancerbroker-completion.sock")
+        );
+        assert_eq!(
+            config.completion.state_path,
+            PathBuf::from("/tmp/cancerbroker-completion-state.json")
+        );
     }
 }

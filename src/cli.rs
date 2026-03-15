@@ -7,7 +7,9 @@ use serde::Serialize;
 use std::time::Duration;
 
 use crate::config::load_config;
-use crate::daemon::{DaemonRunOptions, run_daemon_loop};
+use crate::daemon::{
+    DaemonRunOptions, MemoryGuardOutput, run_daemon_loop, run_rust_analyzer_memory_guard_once,
+};
 use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
 use crate::policy::SignalWindow;
@@ -42,6 +44,10 @@ pub enum Command {
         json: bool,
         #[arg(long, default_value_t = 1)]
         max_events: usize,
+    },
+    RaGuard {
+        #[arg(long)]
+        json: bool,
     },
     Mcp,
     Setup {
@@ -149,6 +155,17 @@ fn render_daemon_output(output: &crate::daemon::DaemonOutput, json: bool) -> Res
     }
 }
 
+fn render_ra_guard_output(output: &MemoryGuardOutput, json: bool) -> Result<String> {
+    if json {
+        Ok(serde_json::to_string(output)?)
+    } else {
+        Ok(format!(
+            "rust_analyzer_memory_candidates={} rust_analyzer_memory_remediations={}",
+            output.rust_analyzer_memory_candidates, output.rust_analyzer_memory_remediations
+        ))
+    }
+}
+
 fn render_setup_output(output: &SetupOutcome) -> String {
     let mut parts = vec![
         format!("opencode_config={}", output.opencode_config_path.display()),
@@ -201,6 +218,13 @@ pub fn run(cli: Cli) -> Result<()> {
                 .wrap_err("daemon run failure")?;
             println!("{}", render_daemon_output(&output, json)?);
         }
+        Command::RaGuard { json } => {
+            let config_path = require_config_path(cli.config)?;
+            let config = load_config(&config_path).wrap_err("config load failure")?;
+            let output = run_rust_analyzer_memory_guard_once(&config)
+                .wrap_err("rust-analyzer guard run failure")?;
+            println!("{}", render_ra_guard_output(&output, json)?);
+        }
         Command::Mcp => {
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             runtime
@@ -232,11 +256,12 @@ mod tests {
 
     use super::{
         Cli, Command, build_daemon_run_options, build_runtime_input, build_status_output,
-        default_signal_windows, render_daemon_output, render_runtime_output, render_setup_output,
-        render_status_output, require_config_path, resolve_evidence_dir,
+        default_signal_windows, render_daemon_output, render_ra_guard_output,
+        render_runtime_output, render_setup_output, render_status_output, require_config_path,
+        resolve_evidence_dir,
     };
     use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
-    use crate::daemon::DaemonOutput;
+    use crate::daemon::{DaemonOutput, MemoryGuardOutput};
     use crate::runtime::RuntimeOutcome;
     use crate::setup::SetupOutcome;
 
@@ -355,6 +380,23 @@ mod tests {
     }
 
     #[test]
+    fn ra_guard_output_renders_human_and_json_modes() {
+        let output = MemoryGuardOutput {
+            rust_analyzer_memory_candidates: 3,
+            rust_analyzer_memory_remediations: 1,
+        };
+
+        assert_eq!(
+            render_ra_guard_output(&output, false).expect("human ra-guard output"),
+            "rust_analyzer_memory_candidates=3 rust_analyzer_memory_remediations=1"
+        );
+        assert_eq!(
+            render_ra_guard_output(&output, true).expect("json ra-guard output"),
+            r#"{"rust_analyzer_memory_candidates":3,"rust_analyzer_memory_remediations":1}"#
+        );
+    }
+
+    #[test]
     fn require_config_path_rejects_missing_value() {
         let error = require_config_path(None).expect_err("missing config should fail");
 
@@ -433,5 +475,39 @@ mod tests {
 
         assert_eq!(cli.config, Some(PathBuf::from("/tmp/guardian.toml")));
         assert!(matches!(cli.command, Command::Mcp));
+    }
+
+    #[test]
+    fn clap_parser_builds_ra_guard_command() {
+        let cli = Cli::parse_from([
+            "cancerbroker",
+            "--config",
+            "/tmp/guardian.toml",
+            "ra-guard",
+            "--json",
+        ]);
+
+        assert_eq!(cli.config, Some(PathBuf::from("/tmp/guardian.toml")));
+        match cli.command {
+            Command::RaGuard { json } => assert!(json),
+            _ => panic!("expected ra-guard command"),
+        }
+    }
+
+    #[test]
+    fn clap_parser_rejects_ra_guard_max_events_flag() {
+        let error = Cli::try_parse_from([
+            "cancerbroker",
+            "--config",
+            "/tmp/guardian.toml",
+            "ra-guard",
+            "--max-events",
+            "1",
+        ])
+        .expect_err("ra-guard should not accept --max-events");
+
+        let message = error.to_string();
+        assert!(message.contains("--max-events"));
+        assert!(message.contains("ra-guard"));
     }
 }
