@@ -111,6 +111,8 @@ flowchart TD
 cancerbroker --config fixtures/config/observe-only.toml status --json
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
 cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+scripts/measure_ra_guard_rss.sh --mode baseline-idle --output /tmp/ra-guard-rss-baseline.txt
 ```
 
 ## What It Does
