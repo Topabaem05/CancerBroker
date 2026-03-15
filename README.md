@@ -30,7 +30,7 @@ cancerbroker --help
 cancerbroker setup
 ```
 
-This now opens a minimal line-based setup wizard on TTY and then:
+This now opens an interactive terminal setup wizard on TTY and then:
 
 - registers CancerBroker as a local Opencode MCP server using `cancerbroker mcp`
 - writes rust-analyzer memory-guard settings into `~/.config/cancerbroker/config.toml`
@@ -81,33 +81,13 @@ Example command:
 cancerbroker setup
 ```
 
-Example prompt flow:
+Representative wizard flow:
 
 ```text
-CancerBroker setup will:
-- register the local MCP server in OpenCode
-- configure the rust-analyzer memory guard for this machine
-Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
-
-Enable rust-analyzer memory protection? [Y/n]
-  When enabled, CancerBroker watches rust-analyzer memory and can clean it up after repeated over-limit samples.
-> 
-
-Memory cap in GB [6]
-  CancerBroker starts counting rust-analyzer as over the limit after it stays above this amount of RAM.
-> 
-
-Consecutive over-limit samples before action [3]
-  This avoids reacting to a single short memory spike.
-> 
-
-Startup grace in seconds [300]
-  rust-analyzer often spikes during initial indexing, so counting starts after this delay.
-> 
-
-Cooldown after remediation in seconds [1800]
-  This prevents repeated remediation loops after rust-analyzer restarts.
-> 
+Header: detected RAM, current step, setup targets
+Body: current setting, explanation, editable value or toggle
+Summary: enabled flag, memory cap, sample count, startup grace, cooldown
+Controls: Enter confirms, Up goes back, digits edit numeric fields, Esc cancels
 ```
 
 Notes:
