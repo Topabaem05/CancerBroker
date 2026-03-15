@@ -184,11 +184,10 @@ impl CandidateResolver {
     }
 }
 
-pub(crate) fn session_ids_in_text(text: &str) -> Vec<String> {
+pub(crate) fn session_ids_in_text(text: &str) -> impl Iterator<Item = String> + '_ {
     text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
         .filter(|part| part.starts_with("ses_") && part.len() > 4)
         .map(ToOwned::to_owned)
-        .collect()
 }
 
 #[cfg(test)]
@@ -218,7 +217,8 @@ mod tests {
 
     #[test]
     fn session_ids_in_text_extracts_multiple_session_tokens() {
-        let session_ids = session_ids_in_text("prefix/ses_alpha/log ses_beta-1 other ses_");
+        let session_ids: Vec<_> =
+            session_ids_in_text("prefix/ses_alpha/log ses_beta-1 other ses_").collect();
 
         assert_eq!(
             session_ids,

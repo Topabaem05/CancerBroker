@@ -4,3 +4,6 @@ tests/
 .sisyphus/drafts/
 .sisyphus/notepads/
 .sisyphus/plans/opencode-sidebar-memory-monitor.md
+remotion-explainer/node_modules/
+remotion-explainer/out/
+remotion-explainer/.cache/
