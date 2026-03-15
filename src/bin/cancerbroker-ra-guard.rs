@@ -732,7 +732,7 @@ fn remediate_process(
 
     #[cfg(windows)]
     {
-        return remediate_process_windows(identity, term_timeout);
+        remediate_process_windows(identity, term_timeout)
     }
 
     #[cfg(not(any(unix, windows)))]
@@ -904,6 +904,7 @@ fn parse_rust_analyzer_ps_line(line: &str, now_unix_secs: u64) -> Option<Process
     })
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_elapsed_secs(raw: &str) -> Option<u64> {
     let (days, hms) = match raw.split_once('-') {
         Some((days, hms)) => (days.parse::<u64>().ok()?, hms),

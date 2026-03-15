@@ -10,6 +10,7 @@ use cancerbroker::cli::{Cli, run};
 use cancerbroker::config::load_config;
 use cancerbroker::daemon::run_rust_analyzer_memory_guard_once;
 
+#[cfg(not(windows))]
 const RA_GUARD_HELPER_BINARY: &str = "cancerbroker-ra-guard";
 
 fn render_ra_guard_output(
