@@ -1,4 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
+#[cfg(target_os = "macos")]
+use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcessSample {
@@ -46,6 +50,19 @@ fn refresh_processes(system: &mut sysinfo::System) {
             .with_user(UpdateKind::OnlyIfNotSet)
             .with_cmd(UpdateKind::OnlyIfNotSet),
     );
+}
+
+fn command_from_sysinfo(process: &sysinfo::Process) -> String {
+    if process.cmd().is_empty() {
+        process.name().to_string_lossy().into_owned()
+    } else {
+        process
+            .cmd()
+            .iter()
+            .map(|part| part.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 fn listening_ports_by_pid() -> HashMap<u32, Vec<u16>> {
@@ -160,21 +177,23 @@ impl ProcessInventory {
         Self::collect_live_with(&mut system)
     }
 
+    pub fn collect_live_for_rust_analyzer_guard() -> Self {
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(inventory) = collect_live_rust_analyzer_macos() {
+                return inventory;
+            }
+        }
+
+        Self::collect_live()
+    }
+
     pub fn collect_live_with(system: &mut sysinfo::System) -> Self {
         refresh_processes(system);
         let ports_by_pid = listening_ports_by_pid();
 
         Self::from_samples(system.processes().values().map(|process| {
-            let command = if process.cmd().is_empty() {
-                process.name().to_string_lossy().into_owned()
-            } else {
-                process
-                    .cmd()
-                    .iter()
-                    .map(|part| part.to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            };
+            let command = command_from_sysinfo(process);
 
             let pid_u32 = process.pid().as_u32();
             let pgid = process_group_id(pid_u32);
@@ -195,6 +214,82 @@ impl ProcessInventory {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn collect_live_rust_analyzer_macos() -> Option<ProcessInventory> {
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,ppid=,pgid=,uid=,rss=,etime=,command="])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let now_unix_secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+
+    let samples = stdout
+        .lines()
+        .filter_map(|line| parse_rust_analyzer_ps_line(line, now_unix_secs));
+    Some(ProcessInventory::from_samples(samples))
+}
+
+#[cfg(target_os = "macos")]
+fn parse_rust_analyzer_ps_line(line: &str, now_unix_secs: u64) -> Option<ProcessSample> {
+    let mut fields = line.split_whitespace();
+
+    let pid = fields.next()?.parse::<u32>().ok()?;
+    let parent_pid = fields.next()?.parse::<u32>().ok()?;
+    let pgid = fields.next()?.parse::<u32>().ok()?;
+    let uid = fields.next()?.parse::<u32>().ok()?;
+    let rss_kib = fields.next()?.parse::<u64>().ok()?;
+    let elapsed = parse_elapsed_secs(fields.next()?)?;
+    let command = fields.collect::<Vec<_>>().join(" ");
+
+    if command.is_empty() || !command.to_ascii_lowercase().contains("rust-analyzer") {
+        return None;
+    }
+
+    Some(ProcessSample {
+        pid,
+        parent_pid: Some(parent_pid),
+        pgid: Some(pgid),
+        start_time_secs: now_unix_secs.saturating_sub(elapsed),
+        uid: Some(uid),
+        memory_bytes: rss_kib.saturating_mul(1024),
+        cpu_percent: 0.0,
+        command,
+        listening_ports: Vec::new(),
+    })
+}
+
+fn parse_elapsed_secs(raw: &str) -> Option<u64> {
+    let (days, hms) = match raw.split_once('-') {
+        Some((days, hms)) => (days.parse::<u64>().ok()?, hms),
+        None => (0, raw),
+    };
+
+    let parts: Vec<_> = hms.split(':').collect();
+    let (hours, minutes, seconds) = match parts.as_slice() {
+        [minutes, seconds] => (
+            0,
+            minutes.parse::<u64>().ok()?,
+            seconds.parse::<u64>().ok()?,
+        ),
+        [hours, minutes, seconds] => (
+            hours.parse::<u64>().ok()?,
+            minutes.parse::<u64>().ok()?,
+            seconds.parse::<u64>().ok()?,
+        ),
+        _ => return None,
+    };
+
+    Some(days * 24 * 60 * 60 + hours * 60 * 60 + minutes * 60 + seconds)
+}
+
 #[cfg(unix)]
 fn current_process_uid(process: &sysinfo::Process) -> Option<u32> {
     process.user_id().map(|uid| **uid)
@@ -208,6 +303,27 @@ fn current_process_uid(_process: &sysinfo::Process) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::{ProcessFingerprint, ProcessInventory, ProcessSample, build_process_fingerprint};
+
+    #[test]
+    fn parse_elapsed_secs_supports_mm_ss() {
+        assert_eq!(super::parse_elapsed_secs("03:15"), Some(195));
+    }
+
+    #[test]
+    fn parse_elapsed_secs_supports_hh_mm_ss() {
+        assert_eq!(super::parse_elapsed_secs("01:02:03"), Some(3723));
+    }
+
+    #[test]
+    fn parse_elapsed_secs_supports_dd_hh_mm_ss() {
+        assert_eq!(super::parse_elapsed_secs("2-01:02:03"), Some(176_523));
+    }
+
+    #[test]
+    fn parse_elapsed_secs_rejects_invalid_formats() {
+        assert_eq!(super::parse_elapsed_secs("invalid"), None);
+        assert_eq!(super::parse_elapsed_secs("1:2:3:4"), None);
+    }
 
     fn sample_processes() -> Vec<ProcessSample> {
         vec![

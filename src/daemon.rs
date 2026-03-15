@@ -341,6 +341,29 @@ fn run_rust_analyzer_memory_guard_with_inventory(
     })
 }
 
+fn run_rust_analyzer_memory_guard_once_with_inventory(
+    config: &GuardianConfig,
+    guard: &mut RustAnalyzerMemoryGuard,
+    inventory: &ProcessInventory,
+    now: SystemTime,
+) -> Result<MemoryGuardOutput, IpcError> {
+    let term_timeout = Duration::from_secs(config.completion.cleanup_retry_interval_secs.max(1));
+    run_rust_analyzer_memory_guard_with_inventory(config, guard, inventory, term_timeout, now)
+}
+
+pub fn run_rust_analyzer_memory_guard_once(
+    config: &GuardianConfig,
+) -> Result<MemoryGuardOutput, IpcError> {
+    let inventory = ProcessInventory::collect_live_for_rust_analyzer_guard();
+    let mut guard = RustAnalyzerMemoryGuard::default();
+    run_rust_analyzer_memory_guard_once_with_inventory(
+        config,
+        &mut guard,
+        &inventory,
+        SystemTime::now(),
+    )
+}
+
 pub async fn run_daemon_once(
     config: &GuardianConfig,
     max_events: usize,
@@ -560,7 +583,9 @@ mod tests {
         DaemonRunOptions, StorageSnapshotCache, build_cleanup_engine, build_cleanup_settings,
         build_daemon_output, build_ownership_policy, build_resolver, execution_error,
         process_event_batch, remediation_succeeded, run_leak_enforcement_with_inventory,
-        run_reconciliation_cycle, run_rust_analyzer_memory_guard_with_inventory,
+        run_reconciliation_cycle, run_rust_analyzer_memory_guard_once,
+        run_rust_analyzer_memory_guard_once_with_inventory,
+        run_rust_analyzer_memory_guard_with_inventory,
     };
     use crate::completion::{
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
@@ -923,7 +948,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rust_analyzer_memory_guard_reports_candidates_in_observe_mode() {
+    fn run_rust_analyzer_memory_guard_once_boundary_reports_candidates_in_observe_mode() {
         let config = GuardianConfig {
             mode: Mode::Observe,
             rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy {
@@ -940,33 +965,46 @@ mod tests {
             },
             ..GuardianConfig::default()
         };
-        let term_timeout = Duration::from_secs(1);
         let now = UNIX_EPOCH + Duration::from_secs(500);
         let mut guard = RustAnalyzerMemoryGuard::default();
 
         assert_eq!(
-            run_rust_analyzer_memory_guard_with_inventory(
+            run_rust_analyzer_memory_guard_once_with_inventory(
                 &config,
                 &mut guard,
                 &rust_analyzer_test_inventory(77, 42, 110),
-                term_timeout,
                 now,
             )
             .expect("first sample"),
             super::MemoryGuardOutput::default()
         );
 
-        let output = run_rust_analyzer_memory_guard_with_inventory(
+        let output = run_rust_analyzer_memory_guard_once_with_inventory(
             &config,
             &mut guard,
             &rust_analyzer_test_inventory(77, 42, 120),
-            term_timeout,
             now,
         )
         .expect("second sample");
 
         assert_eq!(output.rust_analyzer_memory_candidates, 1);
         assert_eq!(output.rust_analyzer_memory_remediations, 0);
+    }
+
+    #[test]
+    fn run_rust_analyzer_memory_guard_once_returns_zero_when_guard_disabled() {
+        let config = GuardianConfig {
+            rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy {
+                enabled: false,
+                ..RustAnalyzerMemoryGuardPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
+
+        let output = run_rust_analyzer_memory_guard_once(&config)
+            .expect("boundary rust-analyzer guard should execute");
+
+        assert_eq!(output, super::MemoryGuardOutput::default());
     }
 
     #[cfg(unix)]
