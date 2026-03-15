@@ -579,13 +579,14 @@ mod tests {
     use notify::{Event, EventKind};
     use tempfile::tempdir;
 
+    #[cfg(unix)]
+    use super::run_rust_analyzer_memory_guard_with_inventory;
     use super::{
         DaemonRunOptions, StorageSnapshotCache, build_cleanup_engine, build_cleanup_settings,
         build_daemon_output, build_ownership_policy, build_resolver, execution_error,
         process_event_batch, remediation_succeeded, run_leak_enforcement_with_inventory,
         run_reconciliation_cycle, run_rust_analyzer_memory_guard_once,
         run_rust_analyzer_memory_guard_once_with_inventory,
-        run_rust_analyzer_memory_guard_with_inventory,
     };
     use crate::completion::{
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
