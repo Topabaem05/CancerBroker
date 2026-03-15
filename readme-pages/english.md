@@ -22,7 +22,6 @@ cancerbroker setup
 This now opens a minimal line-based setup wizard on TTY and then:
 
 - registers CancerBroker as a local Opencode MCP server using `cancerbroker mcp`
-- writes low-memory rust-analyzer defaults into `~/.config/opencode/opencode.json`
 - writes rust-analyzer memory-guard settings into `~/.config/cancerbroker/config.toml`
 
 Use non-interactive mode when you want the machine-recommended defaults without prompts:
@@ -44,7 +43,6 @@ Example prompt flow:
 ```text
 CancerBroker setup will:
 - register the local MCP server in OpenCode
-- apply low-memory rust-analyzer LSP defaults
 - configure the rust-analyzer memory guard for this machine
 Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
 

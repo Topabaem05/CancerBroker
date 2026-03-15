@@ -22,7 +22,6 @@ cancerbroker setup
 このコマンドは TTY 上で最小構成の line-based setup wizard を開き、その後で次の処理を行います。
 
 - `cancerbroker mcp` を使って CancerBroker をローカル Opencode MCP サーバーとして登録する
-- 低メモリ向け rust-analyzer 既定値を `~/.config/opencode/opencode.json` に書き込む
 - rust-analyzer メモリガード設定を `~/.config/cancerbroker/config.toml` に書き込む
 
 プロンプトなしでマシン推奨の既定値を使いたい場合は、非対話モードを使います。
@@ -44,7 +43,6 @@ cancerbroker setup
 ```text
 CancerBroker setup will:
 - register the local MCP server in OpenCode
-- apply low-memory rust-analyzer LSP defaults
 - configure the rust-analyzer memory guard for this machine
 Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
 

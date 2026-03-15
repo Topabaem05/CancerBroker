@@ -489,8 +489,8 @@ mod tests {
 
     use super::{
         CancerBrokerMcp, build_cleanup_output, build_scan_leaks_output, build_scan_output,
-        build_scan_resources_output, default_config_path, list_evidence_files,
-        matches_command_markers, resolve_server_config_path,
+        build_scan_resources_output, build_status_output, default_config_path, list_evidence_files,
+        matches_command_markers, resolve_server_config_path, serialize_tool_output,
     };
     use crate::config::{GuardianConfig, LeakDetectionPolicy};
     use crate::leak::LeakDetector;
@@ -705,8 +705,8 @@ mod tests {
 
     #[tokio::test]
     async fn status_tool_reports_default_config_without_file() {
-        let server = CancerBrokerMcp::new(None).expect("server");
-        let output = server.status().await.expect("status output");
+        let output = serialize_tool_output(&build_status_output(&GuardianConfig::default(), None))
+            .expect("status output");
 
         assert!(output.contains("\"config_source\":\"default\""));
         assert!(output.contains("\"mode\":\"observe\""));

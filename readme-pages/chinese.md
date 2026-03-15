@@ -22,7 +22,6 @@ cancerbroker setup
 该命令现在会在 TTY 中打开一个最小化的逐行设置向导，然后：
 
 - 使用 `cancerbroker mcp` 将 CancerBroker 注册为本地 Opencode MCP 服务器
-- 将低内存 rust-analyzer 默认设置写入 `~/.config/opencode/opencode.json`
 - 将 rust-analyzer 内存保护设置写入 `~/.config/cancerbroker/config.toml`
 
 如果你想直接使用当前机器推荐的默认值而不进行交互，可使用非交互模式：
@@ -44,7 +43,6 @@ cancerbroker setup
 ```text
 CancerBroker setup will:
 - register the local MCP server in OpenCode
-- apply low-memory rust-analyzer LSP defaults
 - configure the rust-analyzer memory guard for this machine
 Detected system RAM: 36 GB. Press Enter to accept the default shown in brackets.
 

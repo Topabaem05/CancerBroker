@@ -33,7 +33,6 @@ pub fn run_setup_wizard<R: BufRead, W: Write>(
 ) -> io::Result<SetupWizardAnswers> {
     writeln!(writer, "CancerBroker setup will:")?;
     writeln!(writer, "- register the local MCP server in OpenCode")?;
-    writeln!(writer, "- apply low-memory rust-analyzer LSP defaults")?;
     writeln!(
         writer,
         "- configure the rust-analyzer memory guard for this machine"

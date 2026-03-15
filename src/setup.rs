@@ -65,8 +65,6 @@ pub enum SetupError {
     InvalidRoot,
     #[error("opencode mcp section must be a JSON object")]
     InvalidMcpSection,
-    #[error("opencode lsp section must be a JSON object")]
-    InvalidLspSection,
     #[error("guardian config parse error at {path}: {source}")]
     GuardianParse {
         path: String,
@@ -150,85 +148,10 @@ fn ensure_mcp_object(root: &mut Value) -> Result<&mut Map<String, Value>, SetupE
     mcp.as_object_mut().ok_or(SetupError::InvalidMcpSection)
 }
 
-fn ensure_lsp_object(root: &mut Value) -> Result<&mut Map<String, Value>, SetupError> {
-    let root = ensure_object(root)?;
-    let lsp = root
-        .entry("lsp".to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
-    lsp.as_object_mut().ok_or(SetupError::InvalidLspSection)
-}
-
-fn rust_low_memory_initialization() -> Value {
-    json!({
-        "cachePriming": {
-            "enable": false
-        },
-        "cargo": {
-            "allTargets": false,
-            "buildScripts": {
-                "enable": false
-            }
-        },
-        "check": {
-            "allTargets": false,
-            "workspace": false
-        },
-        "lru": {
-            "capacity": 32
-        },
-        "numThreads": 1,
-        "procMacro": {
-            "enable": false,
-            "processes": 1
-        }
-    })
-}
-
-fn merge_defaults(target: &mut Map<String, Value>, defaults: &Map<String, Value>) {
-    for (key, default_value) in defaults {
-        match (target.get_mut(key), default_value) {
-            (Some(Value::Object(target_child)), Value::Object(default_child)) => {
-                merge_defaults(target_child, default_child);
-            }
-            (None, _) => {
-                target.insert(key.clone(), default_value.clone());
-            }
-            _ => {}
-        }
-    }
-}
-
-fn configure_rust_analyzer_low_memory(root: &mut Value) -> Result<(), SetupError> {
-    let lsp = ensure_lsp_object(root)?;
-    let rust = lsp
-        .entry("rust".to_string())
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .ok_or(SetupError::InvalidLspSection)?;
-    let initialization = rust
-        .entry("initialization".to_string())
-        .or_insert_with(|| Value::Object(Map::new()))
-        .as_object_mut()
-        .ok_or(SetupError::InvalidLspSection)?;
-
-    let Value::Object(defaults) = rust_low_memory_initialization() else {
-        unreachable!("low-memory initialization must be an object");
-    };
-    merge_defaults(initialization, &defaults);
-    Ok(())
-}
-
-fn update_opencode_config(
-    root: &mut Value,
-    install: bool,
-    apply_rust_low_memory_defaults: bool,
-) -> Result<(), SetupError> {
+fn update_opencode_config(root: &mut Value, install: bool) -> Result<(), SetupError> {
     let mcp = ensure_mcp_object(root)?;
     if install {
         mcp.insert(CANCERBROKER_MCP_KEY.to_string(), cancerbroker_mcp_entry());
-        if apply_rust_low_memory_defaults {
-            configure_rust_analyzer_low_memory(root)?;
-        }
     } else {
         mcp.remove(CANCERBROKER_MCP_KEY);
     }
@@ -489,7 +412,7 @@ fn install_with_io<R: BufRead, W: Write>(
 
     let mut opencode_root = read_opencode_config(opencode_path)?;
     let opencode_backup_path = write_backup_if_present(opencode_path)?;
-    update_opencode_config(&mut opencode_root, true, answers.enabled)?;
+    update_opencode_config(&mut opencode_root, true)?;
     write_opencode_config(opencode_path, &opencode_root)?;
 
     let mut guardian_root = read_guardian_config_document(guardian_path)?;
@@ -523,7 +446,7 @@ fn uninstall_opencode(config_path: &Path) -> Result<SetupOutcome, SetupError> {
 
     let mut root = read_opencode_config(config_path)?;
     let opencode_backup_path = write_backup_if_present(config_path)?;
-    update_opencode_config(&mut root, false, false)?;
+    update_opencode_config(&mut root, false)?;
     write_opencode_config(config_path, &root)?;
 
     Ok(SetupOutcome {
@@ -571,11 +494,10 @@ mod tests {
 
     use super::{
         CANCERBROKER_MCP_KEY, GIB_BYTES, SetupOptions, TomlTable, backup_path,
-        build_wizard_defaults, cancerbroker_mcp_entry, configure_rust_analyzer_low_memory,
-        default_answers, default_same_uid_only, default_setup_options, gib_to_bytes,
-        guardian_config_path, install_with_io, opencode_config_path, read_guardian_config_document,
-        recommended_memory_defaults, uninstall_opencode, update_guardian_config,
-        update_opencode_config,
+        build_wizard_defaults, cancerbroker_mcp_entry, default_answers, default_same_uid_only,
+        default_setup_options, gib_to_bytes, guardian_config_path, install_with_io,
+        opencode_config_path, read_guardian_config_document, recommended_memory_defaults,
+        uninstall_opencode, update_guardian_config, update_opencode_config,
     };
     use crate::config::GuardianConfig;
     use crate::setup_ui::SetupWizardAnswers;
@@ -609,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn update_opencode_config_adds_cancerbroker_entry_and_low_memory_defaults() {
+    fn update_opencode_config_adds_cancerbroker_entry() {
         let mut root = json!({
             "mcp": {
                 "sequential-thinking": {
@@ -618,64 +540,22 @@ mod tests {
             }
         });
 
-        update_opencode_config(&mut root, true, true).expect("setup update");
+        update_opencode_config(&mut root, true).expect("setup update");
 
         assert_eq!(root["mcp"][CANCERBROKER_MCP_KEY], cancerbroker_mcp_entry());
         assert_eq!(root["mcp"]["sequential-thinking"]["type"], "local");
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["cachePriming"]["enable"],
-            false
-        );
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["cargo"]["allTargets"],
-            false
-        );
-        assert_eq!(root["lsp"]["rust"]["initialization"]["lru"]["capacity"], 32);
-        assert_eq!(root["lsp"]["rust"]["initialization"]["numThreads"], 1);
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["procMacro"]["enable"],
-            false
-        );
     }
 
     #[test]
-    fn update_opencode_config_preserves_existing_rust_lsp_overrides() {
+    fn update_opencode_config_preserves_unrelated_sections() {
         let mut root = json!({
             "mcp": {},
-            "lsp": {
-                "rust": {
-                    "initialization": {
-                        "lru": {
-                            "capacity": 16
-                        },
-                        "procMacro": {
-                            "enable": true
-                        }
-                    }
-                }
-            }
+            "plugin": ["oh-my-opencode@latest"]
         });
 
-        update_opencode_config(&mut root, true, true).expect("setup update");
+        update_opencode_config(&mut root, true).expect("setup update");
 
-        assert_eq!(root["lsp"]["rust"]["initialization"]["lru"]["capacity"], 16);
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["procMacro"]["enable"],
-            true
-        );
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["cachePriming"]["enable"],
-            false
-        );
-    }
-
-    #[test]
-    fn update_opencode_config_skips_low_memory_defaults_when_disabled() {
-        let mut root = json!({ "mcp": {} });
-
-        update_opencode_config(&mut root, true, false).expect("setup update");
-
-        assert!(root.get("lsp").is_none());
+        assert_eq!(root["plugin"][0], "oh-my-opencode@latest");
     }
 
     #[test]
@@ -689,7 +569,7 @@ mod tests {
             }
         });
 
-        update_opencode_config(&mut root, false, false).expect("setup update");
+        update_opencode_config(&mut root, false).expect("setup update");
 
         assert!(root["mcp"].get(CANCERBROKER_MCP_KEY).is_none());
         assert_eq!(root["mcp"]["other"]["type"], "remote");
@@ -900,27 +780,6 @@ mod tests {
     fn default_setup_options_disables_interaction_outside_tty_when_requested() {
         let options = default_setup_options(true);
         assert!(!options.interactive);
-    }
-
-    #[test]
-    fn configure_rust_analyzer_low_memory_is_additive() {
-        let mut root = json!({
-            "lsp": {
-                "rust": {
-                    "initialization": {
-                        "numThreads": 3
-                    }
-                }
-            }
-        });
-
-        configure_rust_analyzer_low_memory(&mut root).expect("configure low memory");
-
-        assert_eq!(root["lsp"]["rust"]["initialization"]["numThreads"], 3);
-        assert_eq!(
-            root["lsp"]["rust"]["initialization"]["cachePriming"]["enable"],
-            false
-        );
     }
 
     #[test]
