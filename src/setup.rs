@@ -12,6 +12,7 @@ use crate::config::{
     ConfigError, DEFAULT_GUARDIAN_CONFIG_ENV, GuardianConfig, RustAnalyzerMemoryGuardPolicy,
     default_guardian_config_path, load_config,
 };
+use crate::setup_tui::{SetupTuiError, run_setup_wizard_tui};
 use crate::setup_ui::{SetupWizardAnswers, SetupWizardDefaults, run_setup_wizard};
 
 const OPENCODE_CONFIG_RELATIVE_PATH: &str = ".config/opencode/opencode.json";
@@ -410,6 +411,20 @@ fn install_with_io<R: BufRead, W: Write>(
         default_answers(&defaults)
     };
 
+    install_with_answers(
+        opencode_path,
+        guardian_path,
+        existing_guardian.as_ref(),
+        &answers,
+    )
+}
+
+fn install_with_answers(
+    opencode_path: &Path,
+    guardian_path: &Path,
+    existing_guardian: Option<&GuardianConfig>,
+    answers: &SetupWizardAnswers,
+) -> Result<SetupOutcome, SetupError> {
     let mut opencode_root = read_opencode_config(opencode_path)?;
     let opencode_backup_path = write_backup_if_present(opencode_path)?;
     update_opencode_config(&mut opencode_root, true)?;
@@ -419,8 +434,8 @@ fn install_with_io<R: BufRead, W: Write>(
     let guardian_backup_path = write_backup_if_present(guardian_path)?;
     update_guardian_config(
         &mut guardian_root,
-        &answers,
-        default_same_uid_only(existing_guardian.as_ref()),
+        answers,
+        default_same_uid_only(existing_guardian),
     )?;
     write_guardian_config_document(guardian_path, &guardian_root)?;
 
@@ -460,11 +475,45 @@ fn uninstall_opencode(config_path: &Path) -> Result<SetupOutcome, SetupError> {
 
 pub fn setup(options: SetupOptions) -> Result<SetupOutcome> {
     let home = home_dir().ok_or(SetupError::MissingHome)?;
+    let opencode_path = opencode_config_path(&home);
+    let guardian_path = guardian_config_path(&home);
+
+    if options.interactive {
+        let existing_guardian = load_existing_guardian_settings(&guardian_path)?;
+        let defaults = build_wizard_defaults(existing_guardian.as_ref());
+        let answers = match run_setup_wizard_tui(&defaults) {
+            Ok(answers) => answers,
+            Err(SetupTuiError::Init) => {
+                let mut stdin = io::stdin().lock();
+                let mut stdout = io::stdout().lock();
+                run_setup_wizard(&mut stdin, &mut stdout, &defaults)
+                    .map_err(|source| SetupError::PromptIo { source })?
+            }
+            Err(SetupTuiError::Runtime(source)) => {
+                return Err(SetupError::PromptIo { source }.into());
+            }
+            Err(SetupTuiError::Cancelled) => {
+                return Err(SetupError::PromptIo {
+                    source: io::Error::new(io::ErrorKind::Interrupted, "setup wizard cancelled"),
+                }
+                .into());
+            }
+        };
+
+        return install_with_answers(
+            &opencode_path,
+            &guardian_path,
+            existing_guardian.as_ref(),
+            &answers,
+        )
+        .map_err(Into::into);
+    }
+
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
     install_with_io(
-        &opencode_config_path(&home),
-        &guardian_config_path(&home),
+        &opencode_path,
+        &guardian_path,
         options,
         &mut stdin,
         &mut stdout,

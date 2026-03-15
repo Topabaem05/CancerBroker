@@ -20,4 +20,5 @@ pub mod resolution;
 pub mod runtime;
 pub mod safety;
 pub mod setup;
+mod setup_tui;
 mod setup_ui;
