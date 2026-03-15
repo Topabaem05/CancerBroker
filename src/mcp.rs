@@ -13,7 +13,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::default_signal_windows;
-use crate::config::{GuardianConfig, load_config};
+use crate::config::{
+    DEFAULT_GUARDIAN_CONFIG_ENV, GuardianConfig, default_guardian_config_path, load_config,
+};
 use crate::evidence::default_evidence_dir;
 use crate::leak::{LeakCandidate, LeakDetector};
 use crate::monitor::process::{ProcessInventory, ProcessSample};
@@ -21,9 +23,6 @@ use crate::monitor::resources::{ProcessResourceReport, collect_process_resources
 use crate::platform::current_effective_uid;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 use crate::safety::OwnershipPolicy;
-
-const DEFAULT_CONFIG_ENV: &str = "CANCERBROKER_CONFIG";
-const DEFAULT_CONFIG_RELATIVE_PATH: &str = ".config/cancerbroker/config.toml";
 
 #[derive(Debug, Clone)]
 struct LoadedServerConfig {
@@ -140,7 +139,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 fn default_config_path(home: Option<&Path>) -> Option<PathBuf> {
-    home.map(|path| path.join(DEFAULT_CONFIG_RELATIVE_PATH))
+    home.map(default_guardian_config_path)
 }
 
 fn resolve_server_config_path(
@@ -154,7 +153,7 @@ fn resolve_server_config_path(
 }
 
 fn load_server_config(cli_config: Option<PathBuf>) -> Result<LoadedServerConfig> {
-    let env_config = env::var_os(DEFAULT_CONFIG_ENV).map(PathBuf::from);
+    let env_config = env::var_os(DEFAULT_GUARDIAN_CONFIG_ENV).map(PathBuf::from);
     let resolved_path = resolve_server_config_path(cli_config, env_config, home_dir().as_deref());
 
     let config = match &resolved_path {

@@ -12,7 +12,9 @@ use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
-use crate::setup::{SetupOutcome, setup as setup_opencode, uninstall as uninstall_opencode};
+use crate::setup::{
+    SetupOutcome, default_setup_options, setup as setup_opencode, uninstall as uninstall_opencode,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "cancerbroker")]
@@ -45,6 +47,8 @@ pub enum Command {
     Setup {
         #[arg(long)]
         uninstall: bool,
+        #[arg(long)]
+        non_interactive: bool,
     },
 }
 
@@ -146,19 +150,22 @@ fn render_daemon_output(output: &crate::daemon::DaemonOutput, json: bool) -> Res
 }
 
 fn render_setup_output(output: &SetupOutcome) -> String {
-    match &output.backup_path {
-        Some(backup_path) => format!(
-            "opencode_config={} backup_path={} installed={}",
-            output.config_path.display(),
-            backup_path.display(),
-            output.installed
-        ),
-        None => format!(
-            "opencode_config={} installed={}",
-            output.config_path.display(),
-            output.installed
-        ),
+    let mut parts = vec![
+        format!("opencode_config={}", output.opencode_config_path.display()),
+        format!("installed={}", output.installed),
+    ];
+
+    if let Some(backup_path) = &output.opencode_backup_path {
+        parts.push(format!("opencode_backup_path={}", backup_path.display()));
     }
+    if let Some(config_path) = &output.guardian_config_path {
+        parts.push(format!("guardian_config={}", config_path.display()));
+    }
+    if let Some(backup_path) = &output.guardian_backup_path {
+        parts.push(format!("guardian_backup_path={}", backup_path.display()));
+    }
+
+    parts.join(" ")
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -200,11 +207,14 @@ pub fn run(cli: Cli) -> Result<()> {
                 .block_on(run_mcp_server(cli.config))
                 .wrap_err("mcp run failure")?;
         }
-        Command::Setup { uninstall } => {
+        Command::Setup {
+            uninstall,
+            non_interactive,
+        } => {
             let output = if uninstall {
                 uninstall_opencode()?
             } else {
-                setup_opencode()?
+                setup_opencode(default_setup_options(non_interactive))?
             };
             println!("{}", render_setup_output(&output));
         }
@@ -361,13 +371,17 @@ mod tests {
     #[test]
     fn setup_output_renders_backup_when_present() {
         let output = render_setup_output(&SetupOutcome {
-            config_path: PathBuf::from("/tmp/opencode.json"),
-            backup_path: Some(PathBuf::from("/tmp/opencode.json.bak")),
+            opencode_config_path: PathBuf::from("/tmp/opencode.json"),
+            opencode_backup_path: Some(PathBuf::from("/tmp/opencode.json.bak")),
+            guardian_config_path: Some(PathBuf::from("/tmp/guardian.toml")),
+            guardian_backup_path: Some(PathBuf::from("/tmp/guardian.toml.bak")),
             installed: true,
         });
 
         assert!(output.contains("opencode_config=/tmp/opencode.json"));
-        assert!(output.contains("backup_path=/tmp/opencode.json.bak"));
+        assert!(output.contains("opencode_backup_path=/tmp/opencode.json.bak"));
+        assert!(output.contains("guardian_config=/tmp/guardian.toml"));
+        assert!(output.contains("guardian_backup_path=/tmp/guardian.toml.bak"));
         assert!(output.contains("installed=true"));
     }
 
@@ -398,11 +412,17 @@ mod tests {
 
     #[test]
     fn clap_parser_builds_setup_command_without_config() {
-        let cli = Cli::parse_from(["cancerbroker", "setup", "--uninstall"]);
+        let cli = Cli::parse_from(["cancerbroker", "setup", "--uninstall", "--non-interactive"]);
 
         assert_eq!(cli.config, None);
         match cli.command {
-            Command::Setup { uninstall } => assert!(uninstall),
+            Command::Setup {
+                uninstall,
+                non_interactive,
+            } => {
+                assert!(uninstall);
+                assert!(non_interactive);
+            }
             _ => panic!("expected setup command"),
         }
     }

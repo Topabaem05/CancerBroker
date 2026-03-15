@@ -28,6 +28,13 @@ const DEFAULT_COMPLETION_STATE_PATH: &str = "/tmp/cancerbroker-completion-state.
 #[cfg(windows)]
 const DEFAULT_COMPLETION_STATE_PATH: &str = "cancerbroker-completion-state.json";
 
+pub const DEFAULT_GUARDIAN_CONFIG_ENV: &str = "CANCERBROKER_CONFIG";
+
+#[cfg(unix)]
+const DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH: &str = ".config/cancerbroker/config.toml";
+#[cfg(windows)]
+const DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH: &str = "cancerbroker\\config.toml";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -313,6 +320,10 @@ pub fn load_config(path: &Path) -> Result<GuardianConfig, ConfigError> {
     })
 }
 
+pub fn default_guardian_config_path(home: &Path) -> PathBuf {
+    home.join(DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -323,7 +334,8 @@ mod tests {
     use super::{
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
         DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST, GuardianConfig, LeakDetectionPolicy,
-        Mode, RustAnalyzerMemoryGuardPolicy, default_completion_state_path, load_config,
+        Mode, RustAnalyzerMemoryGuardPolicy, default_completion_state_path,
+        default_guardian_config_path, load_config,
     };
 
     #[test]
@@ -423,6 +435,14 @@ mod tests {
 
         assert!(error.to_string().contains("config read error"));
         assert!(error.to_string().contains("missing.toml"));
+    }
+
+    #[test]
+    fn default_guardian_config_path_uses_home_directory() {
+        assert_eq!(
+            default_guardian_config_path(PathBuf::from("/tmp/home").as_path()),
+            PathBuf::from("/tmp/home/.config/cancerbroker/config.toml")
+        );
     }
 
     #[test]
