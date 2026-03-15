@@ -8,19 +8,10 @@ use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct MemoryGuardOutput {
     rust_analyzer_memory_candidates: usize,
     rust_analyzer_memory_remediations: usize,
-}
-
-impl Default for MemoryGuardOutput {
-    fn default() -> Self {
-        Self {
-            rust_analyzer_memory_candidates: 0,
-            rust_analyzer_memory_remediations: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -356,7 +347,7 @@ impl ProcessInventory {
     fn collect_live_for_rust_analyzer_guard() -> Self {
         #[cfg(target_os = "macos")]
         {
-            return collect_live_rust_analyzer_macos().unwrap_or_default();
+            collect_live_rust_analyzer_macos().unwrap_or_default()
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -430,7 +421,7 @@ fn current_effective_uid() -> u32 {
 #[cfg(not(target_os = "macos"))]
 #[cfg(unix)]
 fn process_group_id(pid: u32) -> Option<u32> {
-    use nix::unistd::{getpgid, Pid};
+    use nix::unistd::{Pid, getpgid};
 
     getpgid(Some(Pid::from_raw(pid as i32)))
         .ok()
@@ -640,7 +631,7 @@ fn remediate_process_unix(
     identity: &ProcessIdentity,
     term_timeout: Duration,
 ) -> ProcessRemediationOutcome {
-    use nix::sys::signal::{kill, Signal};
+    use nix::sys::signal::{Signal, kill};
     use nix::unistd::Pid;
 
     let pid = Pid::from_raw(identity.pid as i32);
@@ -691,7 +682,7 @@ fn remediate_process_windows(
 ) -> ProcessRemediationOutcome {
     use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+        OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess, WaitForSingleObject,
     };
 
     let pid = identity.pid;
@@ -736,7 +727,7 @@ fn remediate_process(
 
     #[cfg(unix)]
     {
-        return remediate_process_unix(identity, term_timeout);
+        remediate_process_unix(identity, term_timeout)
     }
 
     #[cfg(windows)]
@@ -968,9 +959,9 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use super::{
-        parse_args, parse_ra_guard_config, run_rust_analyzer_memory_guard_once_with_inventory,
         CompletionCleanupPolicy, MemoryGuardOutput, Mode, ProcessInventory, ProcessSample,
-        RaGuardConfig, RustAnalyzerMemoryGuard, RustAnalyzerMemoryGuardPolicy,
+        RaGuardConfig, RustAnalyzerMemoryGuard, RustAnalyzerMemoryGuardPolicy, parse_args,
+        parse_ra_guard_config, run_rust_analyzer_memory_guard_once_with_inventory,
     };
 
     #[test]

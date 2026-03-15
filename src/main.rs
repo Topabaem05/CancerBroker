@@ -68,7 +68,7 @@ fn delegate_ra_guard_to_helper(config_path: &Path, json: bool) -> Result<()> {
         }
 
         let error = command.exec();
-        return Err(error.into());
+        Err(error.into())
     }
 
     #[cfg(not(unix))]
