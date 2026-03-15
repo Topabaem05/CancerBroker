@@ -9,8 +9,22 @@ CancerBroker is a Rust cleanup tool for Opencode processes. It tracks PID, PGID,
 
 ## Installation
 
+Install from GitHub:
+
 ```bash
 cargo install --git https://github.com/Topabaem05/CancerBroker.git
+```
+
+Build from the current checkout instead:
+
+```bash
+cargo install --path .
+```
+
+Confirm the binary is available:
+
+```bash
+cancerbroker --help
 ```
 
 ## Opencode Setup
@@ -28,6 +42,38 @@ Use non-interactive mode when you want the machine-recommended defaults without 
 
 ```bash
 cancerbroker setup --non-interactive
+```
+
+### What Setup Writes
+
+`cancerbroker setup` updates these files:
+
+- Opencode MCP config: `~/.config/opencode/opencode.json`
+- CancerBroker guard config: `~/.config/cancerbroker/config.toml`
+
+If you want to override the guard-config location, set `CANCERBROKER_CONFIG` before running the command:
+
+```bash
+export CANCERBROKER_CONFIG="$HOME/.config/cancerbroker/custom-config.toml"
+cancerbroker setup --non-interactive
+```
+
+The setup command prints the exact paths it touched, plus any backup paths it created.
+
+### Manual Configuration Flow
+
+If you do not want the interactive wizard, the minimal manual flow is:
+
+1. install the binary
+2. run `cancerbroker setup --non-interactive`
+3. inspect `~/.config/opencode/opencode.json`
+4. inspect `~/.config/cancerbroker/config.toml`
+5. verify with `cancerbroker --config ~/.config/cancerbroker/config.toml status --json`
+
+To remove the Opencode MCP entry again:
+
+```bash
+cancerbroker setup --uninstall --non-interactive
 ```
 
 ### Interactive Setup Example
@@ -114,6 +160,16 @@ flowchart TD
 cancerbroker --config fixtures/config/observe-only.toml status --json
 cancerbroker --config fixtures/config/observe-only.toml run-once --json
 cancerbroker --config fixtures/config/completion-cleanup.toml daemon --json --max-events 128
+cancerbroker --config fixtures/config/rust-analyzer-guard-minimal.toml ra-guard --json
+scripts/measure_ra_guard_rss.sh --mode baseline-idle --output /tmp/ra-guard-rss-baseline.txt
+```
+
+For a local installed setup, the usual verification path is:
+
+```bash
+cancerbroker setup --non-interactive
+cancerbroker --config ~/.config/cancerbroker/config.toml status --json
+cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 ```
 
 ## What It Does
