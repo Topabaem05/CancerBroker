@@ -10,6 +10,7 @@ pub struct ProcessIdentity {
     pub pgid: Option<u32>,
     pub start_time_secs: u64,
     pub uid: Option<u32>,
+    pub current_rss_bytes: u64,
     pub command: String,
     pub listening_ports: Vec<u16>,
 }
@@ -111,6 +112,7 @@ mod tests {
             pgid: Some(1),
             start_time_secs: 0,
             uid: Some(1000),
+            current_rss_bytes: 0,
             command: "opencode worker".to_string(),
             listening_ports: vec![],
         }

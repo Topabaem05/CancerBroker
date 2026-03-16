@@ -41,6 +41,7 @@ fn build_process_identity(sample: &ProcessSample) -> ProcessIdentity {
         pgid: sample.pgid,
         start_time_secs: sample.start_time_secs,
         uid: sample.uid,
+        current_rss_bytes: sample.memory_bytes,
         command: sample.command.clone(),
         listening_ports: sample.listening_ports.clone(),
     }

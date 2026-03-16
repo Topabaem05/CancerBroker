@@ -270,6 +270,7 @@ mod tests {
             pgid: None,
             start_time_secs: 0,
             uid: Some(current_effective_uid()),
+            current_rss_bytes: 0,
             command: "opencode worker".to_string(),
             listening_ports: vec![],
         }

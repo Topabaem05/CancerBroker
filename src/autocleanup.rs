@@ -16,7 +16,8 @@ use crate::ipc::receive_completion_events_once;
 use crate::monitor::resources::{ProcessResourceReport, collect_process_resources_batch};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
 use crate::notifications::{
-    RemediationReason, notify_process_group_terminated, notify_process_terminated,
+    NotificationContext, RemediationReason, notify_process_group_terminated,
+    notify_process_terminated,
 };
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -384,7 +385,10 @@ fn notify_completion_cleanup_results(
             group_result.pgid,
             &group_result.leader_identity,
             &group_result.outcome,
-            session_id,
+            NotificationContext {
+                session_id,
+                ..NotificationContext::default()
+            },
         );
     }
 
@@ -403,7 +407,15 @@ fn notify_completion_cleanup_results(
             RemediationReason::CompletedSessionCleanup,
             &process_result.identity,
             &process_result.outcome,
-            session_id,
+            NotificationContext {
+                session_id,
+                execution_path: process_result
+                    .resources
+                    .open_files
+                    .first()
+                    .map(String::as_str),
+                ..NotificationContext::default()
+            },
         );
     }
 }
@@ -568,6 +580,7 @@ mod tests {
                         pgid: None,
                         start_time_secs: 0,
                         uid: Some(0),
+                        current_rss_bytes: 0,
                         command: "python worker".to_string(),
                         listening_ports: vec![],
                     }],

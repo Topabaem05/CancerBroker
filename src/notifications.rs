@@ -13,13 +13,20 @@ pub enum RemediationReason {
     CompletedSessionCleanup,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NotificationContext<'a> {
+    pub session_id: Option<&'a str>,
+    pub execution_path: Option<&'a str>,
+    pub leaked_bytes: Option<u64>,
+}
+
 pub fn notify_process_terminated(
     reason: RemediationReason,
     identity: &ProcessIdentity,
     outcome: &ProcessRemediationOutcome,
-    session_id: Option<&str>,
+    context: NotificationContext<'_>,
 ) {
-    let Some((summary, body)) = build_process_notification(reason, identity, outcome, session_id)
+    let Some((summary, body)) = build_process_notification(reason, identity, outcome, context)
     else {
         return;
     };
@@ -31,10 +38,10 @@ pub fn notify_process_group_terminated(
     pgid: u32,
     leader_identity: &ProcessIdentity,
     outcome: &ProcessRemediationOutcome,
-    session_id: Option<&str>,
+    context: NotificationContext<'_>,
 ) {
     let Some((summary, body)) =
-        build_group_notification(reason, pgid, leader_identity, outcome, session_id)
+        build_group_notification(reason, pgid, leader_identity, outcome, context)
     else {
         return;
     };
@@ -59,7 +66,7 @@ fn build_process_notification(
     reason: RemediationReason,
     identity: &ProcessIdentity,
     outcome: &ProcessRemediationOutcome,
-    session_id: Option<&str>,
+    context: NotificationContext<'_>,
 ) -> Option<(String, String)> {
     if !outcome.was_terminated() {
         return None;
@@ -73,16 +80,10 @@ fn build_process_notification(
     }
     .to_string();
 
-    let mut details = vec![format!("pid {}", identity.pid)];
-    if let Some(session_id) = session_id {
-        details.push(format!("session {session_id}"));
-    }
-    if let Some(pgid) = identity.pgid {
-        details.push(format!("pgid {pgid}"));
-    }
-    details.push(termination_label(outcome).to_string());
-
-    Some((summary, details.join(" | ")))
+    Some((
+        summary,
+        build_notification_body(identity, outcome, context, None),
+    ))
 }
 
 fn build_group_notification(
@@ -90,7 +91,7 @@ fn build_group_notification(
     pgid: u32,
     leader_identity: &ProcessIdentity,
     outcome: &ProcessRemediationOutcome,
-    session_id: Option<&str>,
+    context: NotificationContext<'_>,
 ) -> Option<(String, String)> {
     if !outcome.was_terminated() {
         return None;
@@ -104,16 +105,112 @@ fn build_group_notification(
     }
     .to_string();
 
-    let mut details = vec![
-        format!("pgid {pgid}"),
-        format!("leader pid {}", leader_identity.pid),
-    ];
-    if let Some(session_id) = session_id {
-        details.push(format!("session {session_id}"));
-    }
-    details.push(termination_label(outcome).to_string());
+    Some((
+        summary,
+        build_notification_body(leader_identity, outcome, context, Some(pgid)),
+    ))
+}
 
-    Some((summary, details.join(" | ")))
+fn build_notification_body(
+    identity: &ProcessIdentity,
+    outcome: &ProcessRemediationOutcome,
+    context: NotificationContext<'_>,
+    pgid: Option<u32>,
+) -> String {
+    let mut lines = Vec::new();
+
+    let mut headline = format!("{} (pid {})", process_name(identity), identity.pid);
+    if let Some(session_id) = context.session_id {
+        headline.push_str(&format!(", session {session_id}"));
+    }
+    if let Some(pgid) = pgid {
+        headline.push_str(&format!(", pgid {pgid}"));
+    }
+    lines.push(headline);
+
+    if let Some(path) = execution_path(identity, context.execution_path) {
+        lines.push(format!("path {}", shorten_path(&path, 72)));
+    }
+
+    lines.push(memory_line(
+        identity.current_rss_bytes,
+        context.leaked_bytes,
+    ));
+    lines.push(termination_label(outcome).to_string());
+    lines.join("\n")
+}
+
+fn process_name(identity: &ProcessIdentity) -> String {
+    let token = command_token(&identity.command);
+    token
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(token)
+        .to_string()
+}
+
+fn execution_path(identity: &ProcessIdentity, explicit: Option<&str>) -> Option<String> {
+    if let Some(explicit) = explicit
+        && !explicit.is_empty()
+    {
+        return Some(explicit.to_string());
+    }
+
+    let token = command_token(&identity.command);
+    if token.contains('/') || token.contains('\\') {
+        Some(token.to_string())
+    } else {
+        None
+    }
+}
+
+fn command_token(command: &str) -> &str {
+    command.split_whitespace().next().unwrap_or(command)
+}
+
+fn shorten_path(path: &str, max_chars: usize) -> String {
+    let char_count = path.chars().count();
+    if char_count <= max_chars {
+        return path.to_string();
+    }
+
+    let keep = max_chars.saturating_sub(1);
+    let tail = path
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("…{tail}")
+}
+
+fn memory_line(current_rss_bytes: u64, leaked_bytes: Option<u64>) -> String {
+    match leaked_bytes {
+        Some(leaked_bytes) => format!(
+            "leaked {} | rss {}",
+            human_bytes(leaked_bytes),
+            human_bytes(current_rss_bytes)
+        ),
+        None => format!("rss {}", human_bytes(current_rss_bytes)),
+    }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = KIB * 1024;
+    const GIB: u64 = MIB * 1024;
+
+    if bytes >= GIB {
+        format!("{:.1} GiB", bytes as f64 / GIB as f64)
+    } else if bytes >= MIB {
+        format!("{:.0} MiB", bytes as f64 / MIB as f64)
+    } else if bytes >= KIB {
+        format!("{:.0} KiB", bytes as f64 / KIB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn termination_label(outcome: &ProcessRemediationOutcome) -> &'static str {
@@ -171,9 +268,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::{
-        NotificationBackend, RemediationReason, build_group_notification,
-        build_process_notification, dispatch_notification, send_smoke_notification_with_backend,
-        termination_label,
+        NotificationBackend, NotificationContext, RemediationReason, build_group_notification,
+        build_process_notification, dispatch_notification, human_bytes,
+        send_smoke_notification_with_backend, termination_label,
     };
     use crate::remediation::ProcessRemediationOutcome;
     use crate::safety::ProcessIdentity;
@@ -185,7 +282,8 @@ mod tests {
             pgid: Some(42),
             start_time_secs: 1,
             uid: Some(501),
-            command: "opencode ses_alpha worker".to_string(),
+            current_rss_bytes: 512 * 1024 * 1024,
+            command: "/tmp/project/opencode-worker ses_alpha".to_string(),
             listening_ports: vec![],
         }
     }
@@ -198,42 +296,50 @@ mod tests {
                 RemediationReason::Leak,
                 &identity,
                 &ProcessRemediationOutcome::AlreadyExited,
-                Some("ses_alpha"),
+                NotificationContext {
+                    session_id: Some("ses_alpha"),
+                    ..NotificationContext::default()
+                },
             )
             .is_none()
         );
     }
 
     #[test]
-    fn process_notification_mentions_session_and_force_mode() {
+    fn process_notification_mentions_session_path_and_memory() {
         let identity = sample_identity();
         let (_, body) = build_process_notification(
             RemediationReason::CompletedSessionCleanup,
             &identity,
             &ProcessRemediationOutcome::TerminatedForced,
-            Some("ses_alpha"),
+            NotificationContext {
+                session_id: Some("ses_alpha"),
+                execution_path: Some("/tmp/project/opencode-worker"),
+                leaked_bytes: Some(64 * 1024 * 1024),
+            },
         )
         .expect("notification");
 
-        assert!(body.contains("pid 42"));
-        assert!(body.contains("session ses_alpha"));
+        assert!(body.contains("opencode-worker (pid 42), session ses_alpha"));
+        assert!(body.contains("path /tmp/project/opencode-worker"));
+        assert!(body.contains("leaked 64 MiB | rss 512 MiB"));
         assert!(body.contains("terminated forcibly"));
     }
 
     #[test]
-    fn group_notification_mentions_pgid() {
+    fn group_notification_mentions_pgid_and_process_name() {
         let identity = sample_identity();
         let (_, body) = build_group_notification(
             RemediationReason::Leak,
             42,
             &identity,
             &ProcessRemediationOutcome::TerminatedGracefully,
-            None,
+            NotificationContext::default(),
         )
         .expect("notification");
 
-        assert!(body.contains("pgid 42"));
-        assert!(body.contains("leader pid 42"));
+        assert!(body.contains("opencode-worker (pid 42), pgid 42"));
+        assert!(body.contains("rss 512 MiB"));
     }
 
     #[test]
@@ -311,5 +417,13 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].0, "CancerBroker notification smoke test");
         assert!(messages[0].1.contains("desktop notifications are working"));
+    }
+
+    #[test]
+    fn human_bytes_formats_expected_units() {
+        assert_eq!(human_bytes(512), "512 B");
+        assert_eq!(human_bytes(2 * 1024), "2 KiB");
+        assert_eq!(human_bytes(64 * 1024 * 1024), "64 MiB");
+        assert_eq!(human_bytes(3 * 1024 * 1024 * 1024), "3.0 GiB");
     }
 }
