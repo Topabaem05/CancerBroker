@@ -28,6 +28,11 @@ const DEFAULT_COMPLETION_STATE_PATH: &str = "/tmp/cancerbroker-completion-state.
 #[cfg(windows)]
 const DEFAULT_COMPLETION_STATE_PATH: &str = "cancerbroker-completion-state.json";
 
+#[cfg(unix)]
+const DEFAULT_NOTIFICATION_SESSION_STATE_PATH: &str = "/tmp/cancerbroker-notify-session.json";
+#[cfg(windows)]
+const DEFAULT_NOTIFICATION_SESSION_STATE_PATH: &str = "cancerbroker-notify-session.json";
+
 pub const DEFAULT_GUARDIAN_CONFIG_ENV: &str = "CANCERBROKER_CONFIG";
 
 #[cfg(unix)]
@@ -251,6 +256,29 @@ fn default_completion_state_path() -> PathBuf {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationPolicy {
+    pub session_state_path: PathBuf,
+}
+
+impl Default for NotificationPolicy {
+    fn default() -> Self {
+        Self {
+            session_state_path: default_notification_session_state_path(),
+        }
+    }
+}
+
+#[cfg(unix)]
+pub fn default_notification_session_state_path() -> PathBuf {
+    PathBuf::from(DEFAULT_NOTIFICATION_SESSION_STATE_PATH)
+}
+
+#[cfg(windows)]
+pub fn default_notification_session_state_path() -> PathBuf {
+    std::env::temp_dir().join(DEFAULT_NOTIFICATION_SESSION_STATE_PATH)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GuardianConfig {
     #[serde(default)]
     pub mode: Mode,
@@ -274,6 +302,8 @@ pub struct GuardianConfig {
     pub ipc: IpcConfig,
     #[serde(default)]
     pub completion: CompletionCleanupPolicy,
+    #[serde(default)]
+    pub notifications: NotificationPolicy,
 }
 
 impl Default for GuardianConfig {
@@ -290,6 +320,7 @@ impl Default for GuardianConfig {
             rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy::default(),
             ipc: IpcConfig::default(),
             completion: CompletionCleanupPolicy::default(),
+            notifications: NotificationPolicy::default(),
         }
     }
 }
@@ -335,7 +366,8 @@ mod tests {
         CompletionSource, DEFAULT_COMMAND_MARKERS, DEFAULT_COMPLETION_SOCKET_PATH,
         DEFAULT_GUARDIAN_CONFIG_RELATIVE_PATH, DEFAULT_IPC_SOCKET_PATH, DEFAULT_STORAGE_ALLOWLIST,
         GuardianConfig, LeakDetectionPolicy, Mode, RustAnalyzerMemoryGuardPolicy,
-        default_completion_state_path, default_guardian_config_path, load_config,
+        default_completion_state_path, default_guardian_config_path,
+        default_notification_session_state_path, load_config,
     };
 
     fn fixture_config_path(name: &str) -> PathBuf {
@@ -369,6 +401,10 @@ mod tests {
         assert_eq!(
             config.completion.state_path,
             default_completion_state_path()
+        );
+        assert_eq!(
+            config.notifications.session_state_path,
+            default_notification_session_state_path()
         );
         assert_eq!(config.leak_detection, LeakDetectionPolicy::default());
         assert_eq!(
