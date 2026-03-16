@@ -32,6 +32,7 @@ pub struct AutoCleanupSettings {
     pub cleanup_policy: CleanupPolicy,
     pub ownership_policy: OwnershipPolicy,
     pub term_timeout: Duration,
+    pub notification_session_state_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -287,7 +288,12 @@ impl AutoCleanupEngine {
         now: SystemTime,
     ) -> Result<AutoCleanupResult, AutoCleanupError> {
         let (process_outcomes, group_outcomes) = self.remediate_processes(&resolved)?;
-        notify_completion_cleanup_results(event, &process_outcomes, &group_outcomes);
+        notify_completion_cleanup_results(
+            event,
+            &process_outcomes,
+            &group_outcomes,
+            self.settings.notification_session_state_path.as_path(),
+        );
         let cleanup_outcome = remove_stale_allowlisted_artifacts(
             &resolved.artifacts,
             &self.settings.cleanup_policy,
@@ -371,6 +377,7 @@ fn notify_completion_cleanup_results(
     event: &CompletionEvent,
     process_outcomes: &[ProcessCleanupResult],
     group_outcomes: &[ProcessGroupCleanupResult],
+    notification_session_state_path: &Path,
 ) {
     let session_id = event.session_id.as_deref();
     let mut successful_group_pgids = std::collections::BTreeSet::new();
@@ -387,6 +394,7 @@ fn notify_completion_cleanup_results(
             &group_result.outcome,
             NotificationContext {
                 session_id,
+                session_state_path: Some(notification_session_state_path),
                 ..NotificationContext::default()
             },
         );
@@ -414,6 +422,7 @@ fn notify_completion_cleanup_results(
                     .open_files
                     .first()
                     .map(String::as_str),
+                session_state_path: Some(notification_session_state_path),
                 ..NotificationContext::default()
             },
         );
@@ -485,6 +494,7 @@ mod tests {
                 same_uid_only: true,
             },
             term_timeout: Duration::from_millis(1),
+            notification_session_state_path: std::env::temp_dir().join("cb-notify-session.json"),
         }
     }
 

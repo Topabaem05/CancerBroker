@@ -236,6 +236,7 @@ fn build_cleanup_settings(config: &GuardianConfig) -> AutoCleanupSettings {
         },
         ownership_policy: build_ownership_policy(config),
         term_timeout: Duration::from_secs(config.completion.cleanup_retry_interval_secs.max(1)),
+        notification_session_state_path: config.notifications.session_state_path.clone(),
     }
 }
 
@@ -386,6 +387,7 @@ fn run_leak_enforcement_with_inventory(
             NotificationContext {
                 session_id: session_id.as_deref(),
                 leaked_bytes: Some(*leaked_bytes),
+                session_state_path: Some(config.notifications.session_state_path.as_path()),
                 ..NotificationContext::default()
             },
         );
@@ -406,6 +408,7 @@ fn run_leak_enforcement_with_inventory(
             NotificationContext {
                 session_id: session_id.as_deref(),
                 leaked_bytes: Some(*leaked_bytes),
+                session_state_path: Some(config.notifications.session_state_path.as_path()),
                 ..NotificationContext::default()
             },
         );

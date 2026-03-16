@@ -6,12 +6,13 @@ use color_eyre::eyre::{Result, WrapErr, eyre};
 use serde::Serialize;
 use std::time::Duration;
 
-use crate::config::load_config;
+use crate::config::{default_notification_session_state_path, load_config};
 use crate::daemon::{
     DaemonRunOptions, MemoryGuardOutput, run_daemon_loop, run_rust_analyzer_memory_guard_once,
 };
 use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
+use crate::notification_session::refresh_notification_session_snapshot;
 use crate::notifications::send_smoke_notification;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
@@ -206,16 +207,20 @@ fn render_notify_smoke_output(output: &NotifySmokeOutput, json: bool) -> Result<
 }
 
 pub fn run(cli: Cli) -> Result<()> {
+    let _ = refresh_notification_session_snapshot(&default_notification_session_state_path());
+
     match cli.command {
         Command::Status { json } => {
             let config_path = require_config_path(cli.config)?;
             let config = load_config(&config_path).wrap_err("config load failure")?;
+            let _ = refresh_notification_session_snapshot(&config.notifications.session_state_path);
             let output = build_status_output(&config);
             println!("{}", render_status_output(&output, json)?);
         }
         Command::RunOnce { json, evidence_dir } => {
             let config_path = require_config_path(cli.config)?;
             let config = load_config(&config_path).wrap_err("config load failure")?;
+            let _ = refresh_notification_session_snapshot(&config.notifications.session_state_path);
             let output = run_once(
                 &config,
                 build_runtime_input(
@@ -229,6 +234,7 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::Daemon { json, max_events } => {
             let config_path = require_config_path(cli.config)?;
             let config = load_config(&config_path).wrap_err("config load failure")?;
+            let _ = refresh_notification_session_snapshot(&config.notifications.session_state_path);
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             let output = runtime
                 .block_on(run_daemon_loop(
@@ -241,12 +247,15 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::RaGuard { json } => {
             let config_path = require_config_path(cli.config)?;
             let config = load_config(&config_path).wrap_err("config load failure")?;
+            let _ = refresh_notification_session_snapshot(&config.notifications.session_state_path);
             let output = run_rust_analyzer_memory_guard_once(&config)
                 .wrap_err("rust-analyzer guard run failure")?;
             println!("{}", render_ra_guard_output(&output, json)?);
         }
         Command::NotifySmoke { json } => {
-            send_smoke_notification().map_err(|error| eyre!(error))?;
+            let default_path = default_notification_session_state_path();
+            let _ = refresh_notification_session_snapshot(&default_path);
+            send_smoke_notification(Some(default_path.as_path())).map_err(|error| eyre!(error))?;
             let output = NotifySmokeOutput { notified: true };
             println!("{}", render_notify_smoke_output(&output, json)?);
         }
