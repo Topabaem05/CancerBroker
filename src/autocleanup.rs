@@ -15,6 +15,9 @@ use crate::ipc::IpcError;
 use crate::ipc::receive_completion_events_once;
 use crate::monitor::resources::{ProcessResourceReport, collect_process_resources_batch};
 use crate::monitor::storage::{StorageSnapshot, scan_allowlisted_roots};
+use crate::notifications::{
+    RemediationReason, notify_process_group_terminated, notify_process_terminated,
+};
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
     RemediationError, remediate_process, remediate_process_group,
@@ -40,6 +43,7 @@ pub enum AutoCleanupDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessCleanupResult {
+    pub identity: crate::safety::ProcessIdentity,
     pub pid: u32,
     pub resources: ProcessResourceReport,
     pub outcome: ProcessRemediationOutcome,
@@ -48,6 +52,7 @@ pub struct ProcessCleanupResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessGroupCleanupResult {
     pub pgid: u32,
+    pub leader_identity: crate::safety::ProcessIdentity,
     pub outcome: ProcessRemediationOutcome,
 }
 
@@ -276,11 +281,12 @@ pub fn infer_reconciliation_events_from_snapshot(
 impl AutoCleanupEngine {
     fn execute_cleanup(
         &self,
-        _event: &CompletionEvent,
+        event: &CompletionEvent,
         resolved: ResolvedCandidates,
         now: SystemTime,
     ) -> Result<AutoCleanupResult, AutoCleanupError> {
         let (process_outcomes, group_outcomes) = self.remediate_processes(&resolved)?;
+        notify_completion_cleanup_results(event, &process_outcomes, &group_outcomes);
         let cleanup_outcome = remove_stale_allowlisted_artifacts(
             &resolved.artifacts,
             &self.settings.cleanup_policy,
@@ -324,7 +330,7 @@ impl AutoCleanupEngine {
             })?;
 
             if outcome != ProcessRemediationOutcome::Rejected("uid_mismatch")
-                && outcome != ProcessRemediationOutcome::Rejected("missing_command_marker")
+                && outcome != ProcessRemediationOutcome::Rejected("command_marker_mismatch")
                 && let Some(pgid) = identity.pgid
                 && seen_pgids.insert(pgid)
             {
@@ -332,6 +338,7 @@ impl AutoCleanupEngine {
             }
 
             process_outcomes.push(ProcessCleanupResult {
+                identity: identity.clone(),
                 pid: identity.pid,
                 resources: resources_by_pid
                     .remove(&identity.pid)
@@ -344,14 +351,60 @@ impl AutoCleanupEngine {
         for (pgid, leader) in group_leaders {
             let outcome = remediate_process_group(&ProcessGroupRemediationRequest {
                 pgid,
-                leader_identity: leader,
+                leader_identity: leader.clone(),
                 ownership_policy: self.settings.ownership_policy.clone(),
                 term_timeout: self.settings.term_timeout,
             })?;
-            group_outcomes.push(ProcessGroupCleanupResult { pgid, outcome });
+            group_outcomes.push(ProcessGroupCleanupResult {
+                pgid,
+                leader_identity: leader,
+                outcome,
+            });
         }
 
         Ok((process_outcomes, group_outcomes))
+    }
+}
+
+fn notify_completion_cleanup_results(
+    event: &CompletionEvent,
+    process_outcomes: &[ProcessCleanupResult],
+    group_outcomes: &[ProcessGroupCleanupResult],
+) {
+    let session_id = event.session_id.as_deref();
+    let mut successful_group_pgids = std::collections::BTreeSet::new();
+
+    for group_result in group_outcomes {
+        if !group_result.outcome.was_terminated() {
+            continue;
+        }
+        successful_group_pgids.insert(group_result.pgid);
+        notify_process_group_terminated(
+            RemediationReason::CompletedSessionCleanup,
+            group_result.pgid,
+            &group_result.leader_identity,
+            &group_result.outcome,
+            session_id,
+        );
+    }
+
+    for process_result in process_outcomes {
+        if !process_result.outcome.was_terminated() {
+            continue;
+        }
+        if process_result
+            .identity
+            .pgid
+            .is_some_and(|pgid| successful_group_pgids.contains(&pgid))
+        {
+            continue;
+        }
+        notify_process_terminated(
+            RemediationReason::CompletedSessionCleanup,
+            &process_result.identity,
+            &process_result.outcome,
+            session_id,
+        );
     }
 }
 
