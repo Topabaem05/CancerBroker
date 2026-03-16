@@ -12,6 +12,7 @@ use crate::daemon::{
 };
 use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
+use crate::notifications::send_smoke_notification;
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 use crate::setup::{
@@ -49,6 +50,10 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    NotifySmoke {
+        #[arg(long)]
+        json: bool,
+    },
     Mcp,
     Setup {
         #[arg(long)]
@@ -61,6 +66,11 @@ pub enum Command {
 #[derive(Debug, Serialize)]
 struct StatusOutput<'a> {
     mode: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct NotifySmokeOutput {
+    notified: bool,
 }
 
 fn build_status_output(config: &crate::config::GuardianConfig) -> StatusOutput<'_> {
@@ -185,6 +195,16 @@ fn render_setup_output(output: &SetupOutcome) -> String {
     parts.join(" ")
 }
 
+fn render_notify_smoke_output(output: &NotifySmokeOutput, json: bool) -> Result<String> {
+    if json {
+        Ok(serde_json::to_string(output)?)
+    } else if output.notified {
+        Ok("desktop_notification_triggered".to_string())
+    } else {
+        Ok("desktop_notification_not_triggered".to_string())
+    }
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Status { json } => {
@@ -225,6 +245,11 @@ pub fn run(cli: Cli) -> Result<()> {
                 .wrap_err("rust-analyzer guard run failure")?;
             println!("{}", render_ra_guard_output(&output, json)?);
         }
+        Command::NotifySmoke { json } => {
+            send_smoke_notification().map_err(|error| eyre!(error))?;
+            let output = NotifySmokeOutput { notified: true };
+            println!("{}", render_notify_smoke_output(&output, json)?);
+        }
         Command::Mcp => {
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             runtime
@@ -255,10 +280,10 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, build_daemon_run_options, build_runtime_input, build_status_output,
-        default_signal_windows, render_daemon_output, render_ra_guard_output,
-        render_runtime_output, render_setup_output, render_status_output, require_config_path,
-        resolve_evidence_dir,
+        Cli, Command, NotifySmokeOutput, build_daemon_run_options, build_runtime_input,
+        build_status_output, default_signal_windows, render_daemon_output,
+        render_notify_smoke_output, render_ra_guard_output, render_runtime_output,
+        render_setup_output, render_status_output, require_config_path, resolve_evidence_dir,
     };
     use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
     use crate::daemon::{DaemonOutput, MemoryGuardOutput};
@@ -428,6 +453,20 @@ mod tests {
     }
 
     #[test]
+    fn notify_smoke_output_renders_human_and_json_modes() {
+        let output = NotifySmokeOutput { notified: true };
+
+        assert_eq!(
+            render_notify_smoke_output(&output, false).expect("human notify output"),
+            "desktop_notification_triggered"
+        );
+        assert_eq!(
+            render_notify_smoke_output(&output, true).expect("json notify output"),
+            r#"{"notified":true}"#
+        );
+    }
+
+    #[test]
     fn clap_parser_builds_run_once_command() {
         let cli = Cli::parse_from([
             "cancerbroker",
@@ -491,6 +530,17 @@ mod tests {
         match cli.command {
             Command::RaGuard { json } => assert!(json),
             _ => panic!("expected ra-guard command"),
+        }
+    }
+
+    #[test]
+    fn clap_parser_builds_notify_smoke_command() {
+        let cli = Cli::parse_from(["cancerbroker", "notify-smoke", "--json"]);
+
+        assert_eq!(cli.config, None);
+        match cli.command {
+            Command::NotifySmoke { json } => assert!(json),
+            _ => panic!("expected notify-smoke command"),
         }
     }
 

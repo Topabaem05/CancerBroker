@@ -41,6 +41,11 @@ pub fn notify_process_group_terminated(
     notify(summary, body);
 }
 
+pub fn send_smoke_notification() -> Result<(), String> {
+    let backend = NotifyRustBackend;
+    send_smoke_notification_with_backend(&backend)
+}
+
 fn notify(summary: String, body: String) {
     if cfg!(test) {
         return;
@@ -121,6 +126,13 @@ fn termination_label(outcome: &ProcessRemediationOutcome) -> &'static str {
     }
 }
 
+fn send_smoke_notification_with_backend<B: NotificationBackend>(backend: &B) -> Result<(), String> {
+    backend.show(
+        "CancerBroker notification smoke test",
+        "If you can read this, desktop notifications are working.",
+    )
+}
+
 trait NotificationBackend {
     fn show(&self, summary: &str, body: &str) -> Result<(), String>;
 }
@@ -160,7 +172,8 @@ mod tests {
 
     use super::{
         NotificationBackend, RemediationReason, build_group_notification,
-        build_process_notification, dispatch_notification, termination_label,
+        build_process_notification, dispatch_notification, send_smoke_notification_with_backend,
+        termination_label,
     };
     use crate::remediation::ProcessRemediationOutcome;
     use crate::safety::ProcessIdentity;
@@ -286,5 +299,17 @@ mod tests {
                 .expect("messages lock")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn smoke_notification_uses_expected_summary_and_body() {
+        let backend = RecordingBackend::succeed();
+
+        send_smoke_notification_with_backend(&backend).expect("smoke notification should succeed");
+
+        let messages = backend.messages.lock().expect("messages lock");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].0, "CancerBroker notification smoke test");
+        assert!(messages[0].1.contains("desktop notifications are working"));
     }
 }
