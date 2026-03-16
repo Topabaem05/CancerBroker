@@ -14,6 +14,7 @@ metrics-exporter-prometheus = "0.17"
 netstat2 = "0.11"
 notify = "8"
 notify-debouncer-full = "0.4"
+notify-rust = "4"
 rmcp = { version = "0.16", features = ["server", "transport-io", "macros", "schemars"] }
 rustix = "0.38"
 schemars = "1"

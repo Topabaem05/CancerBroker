@@ -31,6 +31,12 @@ pub enum ProcessRemediationOutcome {
     TerminatedForced,
 }
 
+impl ProcessRemediationOutcome {
+    pub fn was_terminated(&self) -> bool {
+        matches!(self, Self::TerminatedGracefully | Self::TerminatedForced)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RemediationError {
     #[error("unsupported platform")]
