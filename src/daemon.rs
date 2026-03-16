@@ -21,7 +21,8 @@ use crate::monitor::storage::{
     StorageSnapshot, scan_allowlisted_roots, try_apply_watch_events_incremental,
 };
 use crate::notifications::{
-    RemediationReason, notify_process_group_terminated, notify_process_terminated,
+    NotificationContext, RemediationReason, notify_process_group_terminated,
+    notify_process_terminated,
 };
 use crate::platform::current_effective_uid;
 use crate::remediation::{
@@ -336,7 +337,11 @@ fn run_leak_enforcement_with_inventory(
                 &related_pids,
                 &related_pgids,
             ) {
-                successful_processes.push((candidate.identity.clone(), outcome.clone()));
+                successful_processes.push((
+                    candidate.identity.clone(),
+                    outcome.clone(),
+                    candidate.total_growth_bytes,
+                ));
             }
         }
 
@@ -360,24 +365,33 @@ fn run_leak_enforcement_with_inventory(
                     &related_pgids,
                 ) {
                     successful_group_notifications.insert(pgid);
-                    successful_groups.push((pgid, candidate.identity.clone(), outcome.clone()));
+                    successful_groups.push((
+                        pgid,
+                        candidate.identity.clone(),
+                        outcome.clone(),
+                        candidate.total_growth_bytes,
+                    ));
                 }
             }
         }
     }
 
-    for (pgid, leader_identity, outcome) in &successful_groups {
+    for (pgid, leader_identity, outcome, leaked_bytes) in &successful_groups {
         let session_id = notification_session_id(leader_identity);
         notify_process_group_terminated(
             RemediationReason::Leak,
             *pgid,
             leader_identity,
             outcome,
-            session_id.as_deref(),
+            NotificationContext {
+                session_id: session_id.as_deref(),
+                leaked_bytes: Some(*leaked_bytes),
+                ..NotificationContext::default()
+            },
         );
     }
 
-    for (identity, outcome) in &successful_processes {
+    for (identity, outcome, leaked_bytes) in &successful_processes {
         if identity
             .pgid
             .is_some_and(|pgid| successful_group_notifications.contains(&pgid))
@@ -389,7 +403,11 @@ fn run_leak_enforcement_with_inventory(
             RemediationReason::Leak,
             identity,
             outcome,
-            session_id.as_deref(),
+            NotificationContext {
+                session_id: session_id.as_deref(),
+                leaked_bytes: Some(*leaked_bytes),
+                ..NotificationContext::default()
+            },
         );
     }
 
