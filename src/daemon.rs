@@ -20,6 +20,9 @@ use crate::monitor::process::ProcessInventory;
 use crate::monitor::storage::{
     StorageSnapshot, scan_allowlisted_roots, try_apply_watch_events_incremental,
 };
+use crate::notifications::{
+    RemediationReason, notify_process_group_terminated, notify_process_terminated,
+};
 use crate::platform::current_effective_uid;
 use crate::remediation::{
     ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
@@ -27,6 +30,7 @@ use crate::remediation::{
 };
 use crate::resolution::{
     CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
+    session_ids_in_text,
 };
 use crate::safety::OwnershipPolicy;
 
@@ -235,11 +239,59 @@ fn build_cleanup_settings(config: &GuardianConfig) -> AutoCleanupSettings {
 }
 
 fn remediation_succeeded(outcome: &ProcessRemediationOutcome) -> bool {
-    matches!(
-        outcome,
-        ProcessRemediationOutcome::TerminatedGracefully
-            | ProcessRemediationOutcome::TerminatedForced
-    )
+    outcome.was_terminated()
+}
+
+fn command_matches_markers(command: &str, markers: &[String]) -> bool {
+    if markers.is_empty() {
+        return false;
+    }
+
+    let command = command.to_lowercase();
+    markers
+        .iter()
+        .any(|marker| command.contains(&marker.to_lowercase()))
+}
+
+fn build_opencode_related_sets(
+    inventory: &ProcessInventory,
+    markers: &[String],
+) -> (
+    std::collections::BTreeSet<u32>,
+    std::collections::BTreeSet<u32>,
+) {
+    let mut related_pids = std::collections::BTreeSet::new();
+    let mut related_pgids = std::collections::BTreeSet::new();
+
+    for sample in inventory.samples() {
+        if command_matches_markers(&sample.command, markers) {
+            related_pids.insert(sample.pid);
+            if let Some(pgid) = sample.pgid {
+                related_pgids.insert(pgid);
+            }
+        }
+    }
+
+    (related_pids, related_pgids)
+}
+
+fn is_opencode_related_identity(
+    identity: &crate::safety::ProcessIdentity,
+    markers: &[String],
+    related_pids: &std::collections::BTreeSet<u32>,
+    related_pgids: &std::collections::BTreeSet<u32>,
+) -> bool {
+    command_matches_markers(&identity.command, markers)
+        || identity
+            .parent_pid
+            .is_some_and(|pid| related_pids.contains(&pid))
+        || identity
+            .pgid
+            .is_some_and(|pgid| related_pgids.contains(&pgid))
+}
+
+fn notification_session_id(identity: &crate::safety::ProcessIdentity) -> Option<String> {
+    session_ids_in_text(&identity.command).next()
 }
 
 fn run_leak_enforcement_with_inventory(
@@ -262,6 +314,11 @@ fn run_leak_enforcement_with_inventory(
     let mut leak_process_remediations = 0;
     let mut leak_group_remediations = 0;
     let mut seen_pgids = std::collections::BTreeSet::new();
+    let mut successful_group_notifications = std::collections::BTreeSet::new();
+    let mut successful_processes = Vec::new();
+    let mut successful_groups = Vec::new();
+    let (related_pids, related_pgids) =
+        build_opencode_related_sets(inventory, &ownership_policy.required_command_markers);
 
     for candidate in &candidates {
         let outcome = remediate_process(&ProcessRemediationRequest {
@@ -273,6 +330,14 @@ fn run_leak_enforcement_with_inventory(
 
         if remediation_succeeded(&outcome) {
             leak_process_remediations += 1;
+            if is_opencode_related_identity(
+                &candidate.identity,
+                &ownership_policy.required_command_markers,
+                &related_pids,
+                &related_pgids,
+            ) {
+                successful_processes.push((candidate.identity.clone(), outcome.clone()));
+            }
         }
 
         if let Some(pgid) = candidate.identity.pgid
@@ -288,8 +353,44 @@ fn run_leak_enforcement_with_inventory(
 
             if remediation_succeeded(&outcome) {
                 leak_group_remediations += 1;
+                if is_opencode_related_identity(
+                    &candidate.identity,
+                    &ownership_policy.required_command_markers,
+                    &related_pids,
+                    &related_pgids,
+                ) {
+                    successful_group_notifications.insert(pgid);
+                    successful_groups.push((pgid, candidate.identity.clone(), outcome.clone()));
+                }
             }
         }
+    }
+
+    for (pgid, leader_identity, outcome) in &successful_groups {
+        let session_id = notification_session_id(leader_identity);
+        notify_process_group_terminated(
+            RemediationReason::Leak,
+            *pgid,
+            leader_identity,
+            outcome,
+            session_id.as_deref(),
+        );
+    }
+
+    for (identity, outcome) in &successful_processes {
+        if identity
+            .pgid
+            .is_some_and(|pgid| successful_group_notifications.contains(&pgid))
+        {
+            continue;
+        }
+        let session_id = notification_session_id(identity);
+        notify_process_terminated(
+            RemediationReason::Leak,
+            identity,
+            outcome,
+            session_id.as_deref(),
+        );
     }
 
     Ok(LeakCleanupOutput {
