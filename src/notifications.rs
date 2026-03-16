@@ -1,7 +1,11 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use notify_rust::Notification;
 
+use crate::config::default_notification_session_state_path;
+use crate::notification_session::load_notification_session_snapshot;
 use crate::remediation::ProcessRemediationOutcome;
 use crate::safety::ProcessIdentity;
 
@@ -18,6 +22,7 @@ pub struct NotificationContext<'a> {
     pub session_id: Option<&'a str>,
     pub execution_path: Option<&'a str>,
     pub leaked_bytes: Option<u64>,
+    pub session_state_path: Option<&'a Path>,
 }
 
 pub fn notify_process_terminated(
@@ -30,7 +35,7 @@ pub fn notify_process_terminated(
     else {
         return;
     };
-    notify(summary, body);
+    let _ = notify(summary, body, context.session_state_path);
 }
 
 pub fn notify_process_group_terminated(
@@ -45,21 +50,36 @@ pub fn notify_process_group_terminated(
     else {
         return;
     };
-    notify(summary, body);
+    let _ = notify(summary, body, context.session_state_path);
 }
 
-pub fn send_smoke_notification() -> Result<(), String> {
-    let backend = NotifyRustBackend;
-    send_smoke_notification_with_backend(&backend)
+pub fn send_smoke_notification(session_state_path: Option<&Path>) -> Result<(), String> {
+    let (summary, body) = smoke_notification_message();
+    notify(summary, body, session_state_path)
 }
 
-fn notify(summary: String, body: String) {
+fn notify(summary: String, body: String, session_state_path: Option<&Path>) -> Result<(), String> {
     if cfg!(test) {
-        return;
+        return Ok(());
     }
 
     let backend = NotifyRustBackend;
-    dispatch_notification(&backend, &NOTIFICATIONS_DISABLED, &summary, &body);
+    if dispatch_notification(&backend, &NOTIFICATIONS_DISABLED, &summary, &body) {
+        return Ok(());
+    }
+
+    let snapshot_path = session_state_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_notification_session_state_path);
+
+    match load_notification_session_snapshot(&snapshot_path) {
+        Ok(Some(snapshot)) => {
+            let helper_path = resolve_notify_helper_path()?;
+            dispatch_via_helper(&helper_path, &snapshot, &summary, &body)
+        }
+        Ok(None) => Err("desktop notification session unavailable".to_string()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn build_process_notification(
@@ -223,10 +243,10 @@ fn termination_label(outcome: &ProcessRemediationOutcome) -> &'static str {
     }
 }
 
-fn send_smoke_notification_with_backend<B: NotificationBackend>(backend: &B) -> Result<(), String> {
-    backend.show(
-        "CancerBroker notification smoke test",
-        "If you can read this, desktop notifications are working.",
+fn smoke_notification_message() -> (String, String) {
+    (
+        "CancerBroker notification smoke test".to_string(),
+        "If you can read this, desktop notifications are working.".to_string(),
     )
 }
 
@@ -252,13 +272,64 @@ fn dispatch_notification<B: NotificationBackend>(
     disabled: &AtomicBool,
     summary: &str,
     body: &str,
-) {
+) -> bool {
     if disabled.load(Ordering::Relaxed) {
-        return;
+        return false;
     }
 
     if backend.show(summary, body).is_err() {
         disabled.store(true, Ordering::Relaxed);
+        return false;
+    }
+
+    true
+}
+
+fn dispatch_via_helper(
+    helper_path: &Path,
+    snapshot: &crate::notification_session::NotificationSessionSnapshot,
+    summary: &str,
+    body: &str,
+) -> Result<(), String> {
+    let mut command = Command::new(helper_path);
+    command.env_clear();
+    for (key, value) in snapshot.env_pairs() {
+        command.env(key, value);
+    }
+    command
+        .arg("--summary")
+        .arg(summary)
+        .arg("--body")
+        .arg(body);
+
+    let status = command
+        .status()
+        .map_err(|error| format!("notification helper execution failed: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("notification helper exited with status {status}"))
+    }
+}
+
+fn resolve_notify_helper_path() -> Result<PathBuf, String> {
+    let current = std::env::current_exe().map_err(|error| error.to_string())?;
+    let parent = current
+        .parent()
+        .ok_or_else(|| "failed to resolve executable directory".to_string())?;
+    Ok(parent.join(helper_binary_name()))
+}
+
+fn helper_binary_name() -> &'static str {
+    #[cfg(windows)]
+    {
+        "cancerbroker-notify-helper.exe"
+    }
+
+    #[cfg(not(windows))]
+    {
+        "cancerbroker-notify-helper"
     }
 }
 
@@ -269,8 +340,8 @@ mod tests {
 
     use super::{
         NotificationBackend, NotificationContext, RemediationReason, build_group_notification,
-        build_process_notification, dispatch_notification, human_bytes,
-        send_smoke_notification_with_backend, termination_label,
+        build_process_notification, dispatch_notification, human_bytes, smoke_notification_message,
+        termination_label,
     };
     use crate::remediation::ProcessRemediationOutcome;
     use crate::safety::ProcessIdentity;
@@ -316,6 +387,7 @@ mod tests {
                 session_id: Some("ses_alpha"),
                 execution_path: Some("/tmp/project/opencode-worker"),
                 leaked_bytes: Some(64 * 1024 * 1024),
+                session_state_path: None,
             },
         )
         .expect("notification");
@@ -394,8 +466,15 @@ mod tests {
         let failing = RecordingBackend::fail();
         let succeeding = RecordingBackend::succeed();
 
-        dispatch_notification(&failing, &disabled, "summary", "body");
-        dispatch_notification(&succeeding, &disabled, "summary", "body");
+        assert!(!dispatch_notification(
+            &failing, &disabled, "summary", "body"
+        ));
+        assert!(!dispatch_notification(
+            &succeeding,
+            &disabled,
+            "summary",
+            "body"
+        ));
 
         assert!(disabled.load(Ordering::Relaxed));
         assert!(
@@ -408,15 +487,10 @@ mod tests {
     }
 
     #[test]
-    fn smoke_notification_uses_expected_summary_and_body() {
-        let backend = RecordingBackend::succeed();
-
-        send_smoke_notification_with_backend(&backend).expect("smoke notification should succeed");
-
-        let messages = backend.messages.lock().expect("messages lock");
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].0, "CancerBroker notification smoke test");
-        assert!(messages[0].1.contains("desktop notifications are working"));
+    fn smoke_notification_message_is_stable() {
+        let (summary, body) = smoke_notification_message();
+        assert_eq!(summary, "CancerBroker notification smoke test");
+        assert!(body.contains("desktop notifications are working"));
     }
 
     #[test]
