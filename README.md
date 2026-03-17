@@ -159,6 +159,21 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - Detects live RSS leak candidates and enforces cleanup in daemon mode.
 - Terminates targets with `SIGTERM` first, then escalates to `SIGKILL` if they ignore the timeout.
 
+## Notification Delivery
+
+- Real remediation notifications include process name, PID, session id, path when available, and memory details.
+- Leak remediation notifications show `leaked X | rss Y`.
+- Completion-cleanup notifications show `rss Y` and the first available open-file path when one exists.
+- `notify-smoke` is a preview path, not a real remediation. It shows a representative process, PID, path, and memory payload plus `preview only - no process was terminated`.
+
+### Desktop Session Mechanism
+
+- Foreground CLI commands try to capture a desktop notification session snapshot before they run.
+- On Linux, the snapshot stores the user-session notification environment used by `notify-rust`, including `DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, and `DISPLAY` or `WAYLAND_DISPLAY`.
+- When a remediation notification fires later from daemon or cleanup code, CancerBroker first tries a direct `notify-rust` send in the current process.
+- If direct delivery fails, CancerBroker loads the saved session snapshot and launches the sibling helper binary `cancerbroker-notify-helper` with that environment to retry notification delivery.
+- If no usable desktop session is available, notification delivery degrades safely without changing remediation behavior.
+
 ## Verification
 
 ```bash
