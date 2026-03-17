@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::completion::{CompletionEvent, CompletionSource};
 use crate::monitor::process::ProcessInventory;
+use crate::monitor::process::ProcessSample;
 use crate::monitor::storage::StorageSnapshot;
 use crate::safety::ProcessIdentity;
 
@@ -64,6 +65,59 @@ pub struct ResolvedCandidates {
     pub artifacts: Vec<PathBuf>,
     pub immediate_cleanup_eligible: bool,
     pub deferred_to_reconciliation: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionAssociation {
+    Resolved(String),
+    Unresolved,
+    Ambiguous,
+}
+
+pub(crate) fn associate_process_sample_with_session(
+    inventory: &ProcessInventory,
+    sample: &ProcessSample,
+) -> SessionAssociation {
+    let direct = unique_session_from_texts([sample.command.as_str()]);
+    if direct != SessionAssociation::Unresolved {
+        return direct;
+    }
+
+    if let Some(parent_pid) = sample.parent_pid
+        && let Some(parent) = inventory.sample(parent_pid)
+    {
+        let parent_match = unique_session_from_texts([parent.command.as_str()]);
+        if parent_match != SessionAssociation::Unresolved {
+            return parent_match;
+        }
+    }
+
+    if let Some(pgid) = sample.pgid {
+        let peer_match = unique_session_from_texts(
+            inventory
+                .samples()
+                .filter(move |peer| peer.pid != sample.pid && peer.pgid == Some(pgid))
+                .map(|peer| peer.command.as_str()),
+        );
+        if peer_match != SessionAssociation::Unresolved {
+            return peer_match;
+        }
+    }
+
+    SessionAssociation::Unresolved
+}
+
+fn unique_session_from_texts<'a>(texts: impl IntoIterator<Item = &'a str>) -> SessionAssociation {
+    let session_ids = texts
+        .into_iter()
+        .flat_map(session_ids_in_text)
+        .collect::<std::collections::BTreeSet<_>>();
+
+    match session_ids.len() {
+        0 => SessionAssociation::Unresolved,
+        1 => SessionAssociation::Resolved(session_ids.into_iter().next().expect("one session id")),
+        _ => SessionAssociation::Ambiguous,
+    }
 }
 
 impl SessionProcessIndex {
@@ -197,8 +251,9 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use super::{
-        CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
-        accepts_completion_event, build_resolved_candidates, session_ids_in_text,
+        CandidateResolver, SessionArtifactIndex, SessionAssociation, SessionPortIndex,
+        SessionProcessIndex, accepts_completion_event, associate_process_sample_with_session,
+        build_resolved_candidates, session_ids_in_text,
     };
     use crate::completion::{CompletionEvent, CompletionSource};
     use crate::monitor::process::{ProcessInventory, ProcessSample};
@@ -225,6 +280,166 @@ mod tests {
             session_ids,
             vec!["ses_alpha".to_string(), "ses_beta".to_string()]
         );
+    }
+
+    #[test]
+    fn associate_process_sample_with_session_prefers_direct_match() {
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "rust-analyzer ses_alpha --stdio".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(1000),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_beta worker".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        let association = associate_process_sample_with_session(
+            &inventory,
+            inventory.sample(10).expect("sample"),
+        );
+
+        assert_eq!(
+            association,
+            SessionAssociation::Resolved("ses_alpha".to_string())
+        );
+    }
+
+    #[test]
+    fn associate_process_sample_with_session_uses_parent_when_needed() {
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "rust-analyzer --stdio".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(1000),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_parent worker".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        let association = associate_process_sample_with_session(
+            &inventory,
+            inventory.sample(10).expect("sample"),
+        );
+
+        assert_eq!(
+            association,
+            SessionAssociation::Resolved("ses_parent".to_string())
+        );
+    }
+
+    #[test]
+    fn associate_process_sample_with_session_uses_unique_peer_pgid_match() {
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(99),
+                start_time_secs: 42,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "rust-analyzer --stdio".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 11,
+                parent_pid: Some(1),
+                pgid: Some(99),
+                start_time_secs: 43,
+                uid: Some(1000),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_peer worker".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        let association = associate_process_sample_with_session(
+            &inventory,
+            inventory.sample(10).expect("sample"),
+        );
+
+        assert_eq!(
+            association,
+            SessionAssociation::Resolved("ses_peer".to_string())
+        );
+    }
+
+    #[test]
+    fn associate_process_sample_with_session_marks_ambiguous_peers() {
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(99),
+                start_time_secs: 42,
+                uid: Some(1000),
+                memory_bytes: 128,
+                cpu_percent: 0.5,
+                command: "rust-analyzer --stdio".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 11,
+                parent_pid: Some(1),
+                pgid: Some(99),
+                start_time_secs: 43,
+                uid: Some(1000),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_alpha worker".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 12,
+                parent_pid: Some(1),
+                pgid: Some(99),
+                start_time_secs: 44,
+                uid: Some(1000),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_beta worker".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        let association = associate_process_sample_with_session(
+            &inventory,
+            inventory.sample(10).expect("sample"),
+        );
+
+        assert_eq!(association, SessionAssociation::Ambiguous);
     }
 
     #[test]
