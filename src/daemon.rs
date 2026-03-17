@@ -30,10 +30,10 @@ use crate::remediation::{
     remediate_process, remediate_process_group,
 };
 use crate::resolution::{
-    CandidateResolver, SessionArtifactIndex, SessionPortIndex, SessionProcessIndex,
-    session_ids_in_text,
+    CandidateResolver, SessionArtifactIndex, SessionAssociation, SessionPortIndex,
+    SessionProcessIndex, associate_process_sample_with_session, session_ids_in_text,
 };
-use crate::safety::OwnershipPolicy;
+use crate::safety::{OwnershipPolicy, ProcessIdentity, SafetyDecision, validate_process_identity};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LeakCleanupOutput {
@@ -296,6 +296,140 @@ fn notification_session_id(identity: &crate::safety::ProcessIdentity) -> Option<
     session_ids_in_text(&identity.command).next()
 }
 
+fn build_process_identity(sample: &crate::monitor::process::ProcessSample) -> ProcessIdentity {
+    ProcessIdentity {
+        pid: sample.pid,
+        parent_pid: sample.parent_pid,
+        pgid: sample.pgid,
+        start_time_secs: sample.start_time_secs,
+        uid: sample.uid,
+        current_rss_bytes: sample.memory_bytes,
+        command: sample.command.clone(),
+        listening_ports: sample.listening_ports.clone(),
+    }
+}
+
+fn rust_analyzer_identity_for_session_rule(
+    sample: &crate::monitor::process::ProcessSample,
+    ownership_policy: &OwnershipPolicy,
+) -> Option<ProcessIdentity> {
+    if !sample
+        .command
+        .to_ascii_lowercase()
+        .contains("rust-analyzer")
+    {
+        return None;
+    }
+
+    let identity = build_process_identity(sample);
+    match validate_process_identity(&identity, ownership_policy) {
+        SafetyDecision::Allowed => Some(identity),
+        SafetyDecision::Rejected(_) => None,
+    }
+}
+
+fn duplicate_rust_analyzer_victims_by_session(
+    inventory: &ProcessInventory,
+    ownership_policy: &OwnershipPolicy,
+) -> Vec<(String, ProcessIdentity)> {
+    let mut by_session = std::collections::BTreeMap::<String, Vec<ProcessIdentity>>::new();
+
+    for sample in inventory.samples() {
+        let Some(identity) = rust_analyzer_identity_for_session_rule(sample, ownership_policy)
+        else {
+            continue;
+        };
+
+        let SessionAssociation::Resolved(session_id) =
+            associate_process_sample_with_session(inventory, sample)
+        else {
+            continue;
+        };
+
+        by_session.entry(session_id).or_default().push(identity);
+    }
+
+    let mut victims = Vec::new();
+    for (session_id, mut identities) in by_session {
+        if identities.len() <= 1 {
+            continue;
+        }
+
+        identities.sort_by_key(|identity| (identity.start_time_secs, identity.pid));
+        identities.pop();
+        victims.extend(
+            identities
+                .into_iter()
+                .map(|identity| (session_id.clone(), identity)),
+        );
+    }
+
+    victims
+}
+
+fn filter_inventory_excluding_instances(
+    inventory: &ProcessInventory,
+    excluded: &std::collections::BTreeSet<(u32, u64)>,
+) -> ProcessInventory {
+    ProcessInventory::from_samples(
+        inventory
+            .samples()
+            .filter(|sample| !excluded.contains(&(sample.pid, sample.start_time_secs)))
+            .cloned(),
+    )
+}
+
+fn enforce_single_rust_analyzer_per_session(
+    config: &GuardianConfig,
+    inventory: &ProcessInventory,
+    ownership_policy: &OwnershipPolicy,
+    term_timeout: Duration,
+) -> Result<ProcessInventory, IpcError> {
+    if config.mode != Mode::Enforce {
+        return Ok(inventory.clone());
+    }
+
+    let victims = duplicate_rust_analyzer_victims_by_session(inventory, ownership_policy);
+    if victims.is_empty() {
+        return Ok(inventory.clone());
+    }
+
+    let fresh_inventory = ProcessInventory::collect_live();
+    let mut excluded = std::collections::BTreeSet::new();
+
+    for (session_id, identity) in victims {
+        let same_instance =
+            fresh_inventory.is_same_process_instance(identity.pid, identity.start_time_secs);
+        if !same_instance {
+            excluded.insert((identity.pid, identity.start_time_secs));
+            continue;
+        }
+
+        let outcome = remediate_process(&ProcessRemediationRequest {
+            identity: identity.clone(),
+            ownership_policy: ownership_policy.clone(),
+            term_timeout,
+        })
+        .map_err(execution_error)?;
+
+        if remediation_succeeded(&outcome) {
+            excluded.insert((identity.pid, identity.start_time_secs));
+            notify_process_terminated(
+                RemediationReason::RustAnalyzerSessionReplacement,
+                &identity,
+                &outcome,
+                NotificationContext {
+                    session_id: Some(session_id.as_str()),
+                    session_state_path: Some(config.notifications.session_state_path.as_path()),
+                    ..NotificationContext::default()
+                },
+            );
+        }
+    }
+
+    Ok(filter_inventory_excluding_instances(inventory, &excluded))
+}
+
 fn run_leak_enforcement_with_inventory(
     config: &GuardianConfig,
     detector: &mut LeakDetector,
@@ -430,7 +564,13 @@ fn run_rust_analyzer_memory_guard_with_inventory(
 ) -> Result<MemoryGuardOutput, IpcError> {
     let policy: &RustAnalyzerMemoryGuardPolicy = &config.rust_analyzer_memory_guard;
     let ownership_policy = build_rust_analyzer_ownership_policy(config);
-    let candidates = guard.observe_inventory(inventory, policy, &ownership_policy, now);
+    let filtered_inventory = enforce_single_rust_analyzer_per_session(
+        config,
+        inventory,
+        &ownership_policy,
+        term_timeout,
+    )?;
+    let candidates = guard.observe_inventory(&filtered_inventory, policy, &ownership_policy, now);
 
     if config.mode != Mode::Enforce {
         return Ok(MemoryGuardOutput {
@@ -705,10 +845,11 @@ mod tests {
     use super::run_rust_analyzer_memory_guard_with_inventory;
     use super::{
         DaemonRunOptions, StorageSnapshotCache, build_cleanup_engine, build_cleanup_settings,
-        build_daemon_output, build_ownership_policy, build_resolver, execution_error,
-        process_event_batch, remediation_succeeded, run_leak_enforcement_with_inventory,
-        run_reconciliation_cycle, run_rust_analyzer_memory_guard_once,
-        run_rust_analyzer_memory_guard_once_with_inventory,
+        build_daemon_output, build_ownership_policy, build_resolver,
+        build_rust_analyzer_ownership_policy, duplicate_rust_analyzer_victims_by_session,
+        execution_error, process_event_batch, remediation_succeeded,
+        run_leak_enforcement_with_inventory, run_reconciliation_cycle,
+        run_rust_analyzer_memory_guard_once, run_rust_analyzer_memory_guard_once_with_inventory,
     };
     use crate::completion::{
         CompletionEvent, CompletionRecordState, CompletionSource, CompletionStateEntry,
@@ -1013,6 +1154,24 @@ mod tests {
         }])
     }
 
+    fn rust_analyzer_session_inventory(
+        samples: impl IntoIterator<Item = (u32, u64, u64, &'static str)>,
+    ) -> ProcessInventory {
+        ProcessInventory::from_samples(samples.into_iter().map(
+            |(pid, start_time_secs, memory_bytes, command)| ProcessSample {
+                pid,
+                parent_pid: Some(1),
+                pgid: None,
+                start_time_secs,
+                uid: Some(current_effective_uid()),
+                memory_bytes,
+                cpu_percent: 0.2,
+                command: command.to_string(),
+                listening_ports: vec![],
+            },
+        ))
+    }
+
     #[test]
     fn run_leak_enforcement_with_inventory_reports_candidates_in_observe_mode() {
         let config = GuardianConfig {
@@ -1130,6 +1289,24 @@ mod tests {
         assert_eq!(output, super::MemoryGuardOutput::default());
     }
 
+    #[test]
+    fn duplicate_rust_analyzer_victims_by_session_selects_older_instance() {
+        let config = GuardianConfig::default();
+        let ownership = build_rust_analyzer_ownership_policy(&config);
+        let inventory = rust_analyzer_session_inventory([
+            (10, 100, 120, "rust-analyzer ses_alpha --stdio"),
+            (11, 200, 140, "rust-analyzer ses_alpha --stdio"),
+            (12, 150, 130, "rust-analyzer ses_beta --stdio"),
+        ]);
+
+        let victims = duplicate_rust_analyzer_victims_by_session(&inventory, &ownership);
+
+        assert_eq!(victims.len(), 1);
+        assert_eq!(victims[0].0, "ses_alpha");
+        assert_eq!(victims[0].1.pid, 10);
+        assert_eq!(victims[0].1.start_time_secs, 100);
+    }
+
     #[cfg(unix)]
     #[test]
     fn run_rust_analyzer_memory_guard_terminates_process_in_enforce_mode() {
@@ -1171,6 +1348,84 @@ mod tests {
 
         let status = child.wait().expect("child should exit after remediation");
         assert!(!status.success());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_rust_analyzer_memory_guard_replaces_older_session_duplicate_in_enforce_mode() {
+        let mut older = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("older sleep process should spawn");
+        let mut newer = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("newer sleep process should spawn");
+
+        let config = GuardianConfig {
+            mode: Mode::Enforce,
+            rust_analyzer_memory_guard: RustAnalyzerMemoryGuardPolicy {
+                enabled: true,
+                max_rss_bytes: 10_000,
+                required_consecutive_samples: 2,
+                startup_grace_secs: 0,
+                cooldown_secs: 300,
+                same_uid_only: true,
+            },
+            completion: CompletionCleanupPolicy {
+                cleanup_retry_interval_secs: 1,
+                ..CompletionCleanupPolicy::default()
+            },
+            ..GuardianConfig::default()
+        };
+        let term_timeout = Duration::from_secs(1);
+        let now = UNIX_EPOCH + Duration::from_secs(500);
+        let mut guard = RustAnalyzerMemoryGuard::default();
+        let live_inventory = ProcessInventory::collect_live();
+        let older_start = live_inventory
+            .sample(older.id())
+            .expect("older child should appear in live inventory")
+            .start_time_secs;
+        let newer_start = live_inventory
+            .sample(newer.id())
+            .expect("newer child should appear in live inventory")
+            .start_time_secs;
+        let inventory = rust_analyzer_session_inventory([
+            (
+                older.id(),
+                older_start,
+                100,
+                "rust-analyzer ses_alpha --stdio old-instance",
+            ),
+            (
+                newer.id(),
+                newer_start,
+                100,
+                "rust-analyzer ses_alpha --stdio new-instance",
+            ),
+        ]);
+
+        let output = run_rust_analyzer_memory_guard_with_inventory(
+            &config,
+            &mut guard,
+            &inventory,
+            term_timeout,
+            now,
+        )
+        .expect("memory guard should run");
+
+        let older_status = older
+            .wait()
+            .expect("older child should exit after replacement");
+        assert!(!older_status.success());
+
+        assert!(newer.try_wait().expect("newer child status").is_none());
+
+        newer.kill().expect("newer child should be cleaned up");
+        let _ = newer.wait();
+
+        assert_eq!(output.rust_analyzer_memory_candidates, 0);
+        assert_eq!(output.rust_analyzer_memory_remediations, 0);
     }
 
     #[cfg(unix)]

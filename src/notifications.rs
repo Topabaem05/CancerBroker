@@ -15,6 +15,7 @@ static NOTIFICATIONS_DISABLED: AtomicBool = AtomicBool::new(false);
 pub enum RemediationReason {
     Leak,
     CompletedSessionCleanup,
+    RustAnalyzerSessionReplacement,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -97,6 +98,9 @@ fn build_process_notification(
         RemediationReason::CompletedSessionCleanup => {
             "CancerBroker cleaned up an Opencode process after completion"
         }
+        RemediationReason::RustAnalyzerSessionReplacement => {
+            "CancerBroker replaced an older rust-analyzer process for this session"
+        }
     }
     .to_string();
 
@@ -121,6 +125,9 @@ fn build_group_notification(
         RemediationReason::Leak => "CancerBroker terminated a leaking Opencode process group",
         RemediationReason::CompletedSessionCleanup => {
             "CancerBroker cleaned up an Opencode process group after completion"
+        }
+        RemediationReason::RustAnalyzerSessionReplacement => {
+            "CancerBroker replaced an older rust-analyzer process group for this session"
         }
     }
     .to_string();
