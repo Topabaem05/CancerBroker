@@ -244,10 +244,55 @@ fn termination_label(outcome: &ProcessRemediationOutcome) -> &'static str {
 }
 
 fn smoke_notification_message() -> (String, String) {
+    let identity = smoke_preview_identity();
+    let context = NotificationContext {
+        session_id: Some("ses_smoke"),
+        execution_path: Some("/tmp/project/opencode-worker"),
+        leaked_bytes: Some(64 * 1024 * 1024),
+        session_state_path: None,
+    };
+
     (
-        "CancerBroker notification smoke test".to_string(),
-        "If you can read this, desktop notifications are working.".to_string(),
+        "CancerBroker remediation notification preview".to_string(),
+        build_smoke_preview_body(&identity, context),
     )
+}
+
+fn build_smoke_preview_body(
+    identity: &ProcessIdentity,
+    context: NotificationContext<'_>,
+) -> String {
+    let mut lines = Vec::new();
+    let mut headline = format!("{} (pid {})", process_name(identity), identity.pid);
+    if let Some(session_id) = context.session_id {
+        headline.push_str(&format!(", session {session_id}"));
+    }
+    lines.push(headline);
+
+    if let Some(path) = execution_path(identity, context.execution_path) {
+        lines.push(format!("path {}", shorten_path(&path, 72)));
+    }
+
+    lines.push(memory_line(
+        identity.current_rss_bytes,
+        context.leaked_bytes,
+    ));
+    lines.push("would be terminated in a real remediation event".to_string());
+    lines.push("preview only - no process was terminated".to_string());
+    lines.join("\n")
+}
+
+fn smoke_preview_identity() -> ProcessIdentity {
+    ProcessIdentity {
+        pid: 42,
+        parent_pid: Some(7),
+        pgid: Some(42),
+        start_time_secs: 1,
+        uid: Some(501),
+        current_rss_bytes: 512 * 1024 * 1024,
+        command: "/tmp/project/opencode-worker ses_smoke".to_string(),
+        listening_ports: vec![],
+    }
 }
 
 trait NotificationBackend {
@@ -489,8 +534,14 @@ mod tests {
     #[test]
     fn smoke_notification_message_is_stable() {
         let (summary, body) = smoke_notification_message();
-        assert_eq!(summary, "CancerBroker notification smoke test");
-        assert!(body.contains("desktop notifications are working"));
+        assert_eq!(summary, "CancerBroker remediation notification preview");
+        assert!(body.contains("opencode-worker (pid 42), session ses_smoke"));
+        assert!(body.contains("path /tmp/project/opencode-worker"));
+        assert!(body.contains("leaked 64 MiB | rss 512 MiB"));
+        assert!(body.contains("would be terminated in a real remediation event"));
+        assert!(body.contains("preview only - no process was terminated"));
+        assert!(!body.contains("terminated gracefully"));
+        assert!(!body.contains("terminated forcibly"));
     }
 
     #[test]
