@@ -174,6 +174,47 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - If direct delivery fails, CancerBroker loads the saved session snapshot and launches the sibling helper binary `cancerbroker-notify-helper` with that environment to retry notification delivery.
 - If no usable desktop session is available, notification delivery degrades safely without changing remediation behavior.
 
+## Orphan Cleanup
+
+CancerBroker also supports `opencode` orphan cleanup from the CLI.
+
+```bash
+cancerbroker orphans --json        # dry run / list matches
+cancerbroker orphans --kill        # terminate all matched orphan processes
+cancerbroker orphans --kill --json
+cancerbroker orphans watch         # repeated scan output
+cancerbroker orphans guard         # repeated scan + kill over threshold
+cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
+```
+
+### Detection Model
+
+- On Unix-like systems, CancerBroker collects live processes and combines that inventory with `ps -axo pid=,tty=`.
+- A process is considered an orphan candidate only when:
+  - its TTY is `?` or `??`
+  - its executable token or basename matches an allowed command marker such as `opencode`
+  - it passes the same UID / command-marker safety checks used by other remediation paths
+- CancerBroker intentionally does **not** match arbitrary commands just because their file path happens to contain `opencode`.
+- On non-Unix targets, the exact TTY heuristic is not available, so the feature degrades safely instead of applying an unsafe approximation.
+
+### Output Model
+
+- Default invocation is a dry run.
+- Human output prints `✅ 깨끗합니다!` when no orphaned processes are found.
+- JSON output includes:
+  - `matched_count`
+  - `terminated_count`
+  - `rejected_count`
+  - `estimated_freed_bytes`
+  - per-process `pid`, `parent_pid`, `pgid`, `memory_bytes`, `cpu_percent_milli`, `tty`, and full `command`
+
+### Guard Behavior
+
+- `watch` repeats the scan and prints each cycle.
+- `guard` filters orphan candidates by RSS threshold before remediation.
+- `--kill` uses normal remediation semantics.
+- `--kill --force` or `guard --force` uses direct force remediation for matched orphan processes.
+
 ## Verification
 
 ```bash
