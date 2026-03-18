@@ -162,6 +162,47 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - Detecta candidatos de fuga de RSS en vivo y aplica limpieza en modo daemon.
 - Termina objetivos con `SIGTERM` primero y luego escala a `SIGKILL` si ignoran el tiempo de espera.
 
+## Limpieza de procesos huérfanos
+
+CancerBroker también admite la limpieza de procesos huérfanos de `opencode` desde la CLI.
+
+```bash
+cancerbroker orphans --json        # dry run / lista coincidencias
+cancerbroker orphans --kill        # termina todos los huérfanos coincidentes
+cancerbroker orphans --kill --json
+cancerbroker orphans watch         # salida repetida de escaneo
+cancerbroker orphans guard         # escaneo repetido + kill sobre el umbral
+cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
+```
+
+### Modelo de detección
+
+- En sistemas Unix-like, CancerBroker recopila procesos en vivo y combina ese inventario con `ps -axo pid=,tty=`.
+- Un proceso solo se considera candidato huérfano cuando:
+  - su TTY es `?` o `??`
+  - su token ejecutable o basename coincide con un command marker permitido como `opencode`
+  - pasa las mismas comprobaciones de UID y command-marker que usan otras rutas de remediation
+- CancerBroker **no** empareja comandos arbitrarios solo porque su ruta de archivo contenga `opencode`.
+- En plataformas no Unix, la heurística exacta de TTY no está disponible, por lo que la función degrada de forma segura en lugar de usar una aproximación insegura.
+
+### Modelo de salida
+
+- La invocación por defecto es un dry run.
+- La salida humana imprime `✅ 깨끗합니다!` cuando no se encuentran procesos huérfanos.
+- La salida JSON incluye:
+  - `matched_count`
+  - `terminated_count`
+  - `rejected_count`
+  - `estimated_freed_bytes`
+  - por proceso: `pid`, `parent_pid`, `pgid`, `memory_bytes`, `cpu_percent_milli`, `tty` y el `command` completo
+
+### Comportamiento de guard
+
+- `watch` repite el escaneo y muestra cada ciclo.
+- `guard` filtra candidatos huérfanos por umbral RSS antes de la remediation.
+- `--kill` usa la semántica normal de remediation.
+- `--kill --force` o `guard --force` usan remediation forzada directa para los procesos huérfanos coincidentes.
+
 ## Verificación
 
 ```bash

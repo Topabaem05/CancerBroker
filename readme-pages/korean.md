@@ -162,6 +162,47 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - 실시간 RSS leak candidate를 감지하고 daemon 모드에서 정리를 수행합니다.
 - 먼저 `SIGTERM`을 보내고, 타임아웃을 무시하면 `SIGKILL`로 escalation 합니다.
 
+## Orphan Cleanup
+
+CancerBroker는 CLI에서 `opencode` orphan cleanup도 지원합니다.
+
+```bash
+cancerbroker orphans --json        # dry run / 매치 목록 출력
+cancerbroker orphans --kill        # 매치된 orphan 프로세스 전부 종료
+cancerbroker orphans --kill --json
+cancerbroker orphans watch         # 반복 스캔 출력
+cancerbroker orphans guard         # 반복 스캔 + threshold 초과 시 종료
+cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
+```
+
+### Detection Model
+
+- Unix 계열에서는 live process inventory와 `ps -axo pid=,tty=` 결과를 함께 사용합니다.
+- 프로세스는 아래 조건을 모두 만족할 때만 orphan candidate로 간주됩니다.
+  - TTY가 `?` 또는 `??`
+  - executable token 또는 basename이 `opencode` 같은 허용된 command marker와 정확히 일치
+  - 다른 remediation 경로와 동일한 UID / command-marker safety check를 통과
+- CancerBroker는 파일 경로에 `opencode`가 들어 있다는 이유만으로 임의의 커맨드를 매치하지 않습니다.
+- non-Unix 플랫폼에서는 정확한 TTY heuristic이 없으므로 unsafe approximation 대신 안전하게 degrade 합니다.
+
+### Output Model
+
+- 기본 호출은 dry run입니다.
+- orphaned process가 없으면 human output은 `✅ 깨끗합니다!`를 출력합니다.
+- JSON output에는 다음이 포함됩니다.
+  - `matched_count`
+  - `terminated_count`
+  - `rejected_count`
+  - `estimated_freed_bytes`
+  - 각 프로세스의 `pid`, `parent_pid`, `pgid`, `memory_bytes`, `cpu_percent_milli`, `tty`, 전체 `command`
+
+### Guard Behavior
+
+- `watch`는 스캔을 반복하며 각 cycle 결과를 출력합니다.
+- `guard`는 RSS threshold를 먼저 적용한 뒤 orphan candidate를 정리합니다.
+- `--kill`은 일반 remediation semantics를 사용합니다.
+- `--kill --force` 또는 `guard --force`는 매치된 orphan process에 direct force remediation을 사용합니다.
+
 ## 검증
 
 ```bash

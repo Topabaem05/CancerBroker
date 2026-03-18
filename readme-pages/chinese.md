@@ -162,6 +162,47 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - 检测实时 RSS 泄漏候选项，并在 daemon 模式下执行清理。
 - 先用 `SIGTERM` 终止目标；如果目标在超时后仍未退出，则升级到 `SIGKILL`。
 
+## 孤儿进程清理
+
+CancerBroker 也支持通过 CLI 清理 `opencode` 孤儿进程。
+
+```bash
+cancerbroker orphans --json        # dry run / 列出匹配项
+cancerbroker orphans --kill        # 终止所有匹配的孤儿进程
+cancerbroker orphans --kill --json
+cancerbroker orphans watch         # 重复输出扫描结果
+cancerbroker orphans guard         # 重复扫描，并在超阈值时执行终止
+cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
+```
+
+### 检测模型
+
+- 在 Unix-like 系统上，CancerBroker 会收集实时进程清单，并结合 `ps -axo pid=,tty=` 的结果。
+- 只有在以下条件都满足时，进程才会被视为孤儿候选：
+  - `TTY` 为 `?` 或 `??`
+  - 可执行 token 或 basename 与允许的 command marker（如 `opencode`）完全匹配
+  - 通过与其他 remediation 路径相同的 UID / command-marker 安全检查
+- CancerBroker **不会** 仅因为文件路径里包含 `opencode` 就匹配任意命令。
+- 在非 Unix 平台上，精确的 TTY 启发式不可用，因此该功能会安全降级，而不是使用不安全的近似规则。
+
+### 输出模型
+
+- 默认调用是 dry run。
+- 当没有发现孤儿进程时，human 输出会显示 `✅ 깨끗합니다!`。
+- JSON 输出包含：
+  - `matched_count`
+  - `terminated_count`
+  - `rejected_count`
+  - `estimated_freed_bytes`
+  - 每个进程的 `pid`、`parent_pid`、`pgid`、`memory_bytes`、`cpu_percent_milli`、`tty` 和完整 `command`
+
+### Guard 行为
+
+- `watch` 会重复扫描并打印每个 cycle 的结果。
+- `guard` 会先按 RSS 阈值过滤孤儿候选，再执行 remediation。
+- `--kill` 使用普通 remediation 语义。
+- `--kill --force` 或 `guard --force` 会对匹配到的孤儿进程使用直接 force remediation。
+
 ## 验证
 
 ```bash

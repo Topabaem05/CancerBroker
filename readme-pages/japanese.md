@@ -162,6 +162,47 @@ cancerbroker --config ~/.config/cancerbroker/config.toml ra-guard --json
 - ライブ RSS リーク候補を検出し、daemon モードでクリーンアップを実行します。
 - まず `SIGTERM` を送り、タイムアウトを無視した場合は `SIGKILL` にエスカレーションします。
 
+## Orphan Cleanup
+
+CancerBroker は CLI から `opencode` の orphan cleanup も実行できます。
+
+```bash
+cancerbroker orphans --json        # dry run / 一致候補を表示
+cancerbroker orphans --kill        # 一致した orphan process をすべて終了
+cancerbroker orphans --kill --json
+cancerbroker orphans watch         # 繰り返しスキャン結果を表示
+cancerbroker orphans guard         # 繰り返しスキャン + threshold 超過時に終了
+cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
+```
+
+### Detection Model
+
+- Unix 系では、CancerBroker は live process inventory と `ps -axo pid=,tty=` の結果を組み合わせて使います。
+- 次の条件をすべて満たす場合にのみ orphan candidate とみなされます。
+  - TTY が `?` または `??`
+  - executable token または basename が `opencode` などの許可された command marker と完全一致する
+  - 他の remediation 経路と同じ UID / command-marker safety check を通過する
+- CancerBroker は、ファイルパスに `opencode` が含まれているだけの任意コマンドには一致させません。
+- 非 Unix プラットフォームでは正確な TTY ヒューリスティックが使えないため、安全でない近似ではなく安全な degrade を選びます。
+
+### Output Model
+
+- デフォルト呼び出しは dry run です。
+- orphaned process が見つからない場合、人向け出力は `✅ 깨끗합니다!` を表示します。
+- JSON 出力には次が含まれます。
+  - `matched_count`
+  - `terminated_count`
+  - `rejected_count`
+  - `estimated_freed_bytes`
+  - 各 process の `pid`, `parent_pid`, `pgid`, `memory_bytes`, `cpu_percent_milli`, `tty`, 完全な `command`
+
+### Guard Behavior
+
+- `watch` はスキャンを繰り返し、各 cycle の結果を表示します。
+- `guard` は RSS threshold を超えた orphan candidate のみ remediation します。
+- `--kill` は通常の remediation semantics を使います。
+- `--kill --force` または `guard --force` は一致した orphan process に direct force remediation を使います。
+
 ## 検証
 
 ```bash
