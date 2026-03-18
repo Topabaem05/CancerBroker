@@ -6,7 +6,7 @@ use color_eyre::eyre::{Result, WrapErr, eyre};
 use serde::Serialize;
 use std::time::Duration;
 
-use crate::config::{default_notification_session_state_path, load_config};
+use crate::config::{GuardianConfig, default_notification_session_state_path, load_config};
 use crate::daemon::{
     DaemonRunOptions, MemoryGuardOutput, run_daemon_loop, run_rust_analyzer_memory_guard_once,
 };
@@ -14,6 +14,7 @@ use crate::evidence::default_evidence_dir;
 use crate::mcp::run_mcp_server;
 use crate::notification_session::refresh_notification_session_snapshot;
 use crate::notifications::send_smoke_notification;
+use crate::orphans::{OrphanMode, OrphansOutput, run_orphans};
 use crate::policy::SignalWindow;
 use crate::runtime::{RuntimeInput, RuntimeOutcome, run_once};
 use crate::setup::{
@@ -55,12 +56,44 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    Orphans {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, short = 'k')]
+        kill: bool,
+        #[arg(long)]
+        force: bool,
+        #[command(subcommand)]
+        action: Option<OrphanAction>,
+    },
     Mcp,
     Setup {
         #[arg(long)]
         uninstall: bool,
         #[arg(long)]
         non_interactive: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum OrphanAction {
+    Watch {
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 2)]
+        interval_secs: u64,
+    },
+    Guard {
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 1024)]
+        threshold_mb: u64,
+        #[arg(long, default_value_t = 60)]
+        interval_secs: u64,
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -123,6 +156,13 @@ fn require_config_path(config: Option<PathBuf>) -> Result<PathBuf> {
 
 fn resolve_evidence_dir(evidence_dir: Option<PathBuf>) -> PathBuf {
     evidence_dir.unwrap_or_else(default_evidence_dir)
+}
+
+fn load_guardian_config_or_default(config: Option<PathBuf>) -> Result<GuardianConfig> {
+    match config {
+        Some(path) => load_config(&path).wrap_err("config load failure"),
+        None => Ok(GuardianConfig::default()),
+    }
 }
 
 fn render_runtime_output(output: &RuntimeOutcome, json: bool) -> Result<String> {
@@ -206,6 +246,47 @@ fn render_notify_smoke_output(output: &NotifySmokeOutput, json: bool) -> Result<
     }
 }
 
+fn render_orphans_output(output: &OrphansOutput, json: bool) -> Result<String> {
+    if json {
+        return Ok(serde_json::to_string(output)?);
+    }
+
+    if output.matched_count == 0 {
+        return Ok("✅ 깨끗합니다!".to_string());
+    }
+
+    let mut lines = vec![format!(
+        "mode={} matched_count={} terminated_count={} rejected_count={} estimated_freed_mib={} tty_supported={}",
+        output.mode,
+        output.matched_count,
+        output.terminated_count,
+        output.rejected_count,
+        output.estimated_freed_bytes / (1024 * 1024),
+        output.tty_supported,
+    )];
+
+    if let Some(threshold_bytes) = output.threshold_bytes {
+        lines.push(format!(
+            "threshold_mib={} cycle_index={}",
+            threshold_bytes / (1024 * 1024),
+            output.cycle_index.unwrap_or(0)
+        ));
+    }
+
+    for process in &output.processes {
+        lines.push(format!(
+            "pid={} memory_mib={} cpu_percent={:.1} tty={} command={}",
+            process.pid,
+            process.memory_bytes / (1024 * 1024),
+            process.cpu_percent_milli as f32 / 1000.0,
+            process.tty.as_deref().unwrap_or("<none>"),
+            process.command,
+        ));
+    }
+
+    Ok(lines.join("\n"))
+}
+
 pub fn run(cli: Cli) -> Result<()> {
     let _ = refresh_notification_session_snapshot(&default_notification_session_state_path());
 
@@ -259,6 +340,51 @@ pub fn run(cli: Cli) -> Result<()> {
             let output = NotifySmokeOutput { notified: true };
             println!("{}", render_notify_smoke_output(&output, json)?);
         }
+        Command::Orphans {
+            json,
+            dry_run: _,
+            kill,
+            force,
+            action,
+        } => {
+            let config = load_guardian_config_or_default(cli.config)?;
+            let outputs = match action {
+                Some(OrphanAction::Watch { interval_secs, .. }) => run_orphans(
+                    &config,
+                    OrphanMode::Watch {
+                        interval: Duration::from_secs(interval_secs.max(1)),
+                        max_cycles: None,
+                    },
+                ),
+                Some(OrphanAction::Guard {
+                    threshold_mb,
+                    interval_secs,
+                    force,
+                    ..
+                }) => run_orphans(
+                    &config,
+                    OrphanMode::Guard {
+                        threshold_bytes: threshold_mb.saturating_mul(1024 * 1024),
+                        interval: Duration::from_secs(interval_secs.max(1)),
+                        max_cycles: None,
+                        force,
+                    },
+                ),
+                None if kill => run_orphans(&config, OrphanMode::Kill { force }),
+                None => run_orphans(&config, OrphanMode::List),
+            }
+            .map_err(|error| eyre!(error))?;
+
+            let effective_json = match &action {
+                Some(OrphanAction::Watch { json, .. }) => *json,
+                Some(OrphanAction::Guard { json, .. }) => *json,
+                None => json,
+            };
+
+            for output in outputs {
+                println!("{}", render_orphans_output(&output, effective_json)?);
+            }
+        }
         Command::Mcp => {
             let runtime = tokio::runtime::Runtime::new().wrap_err("tokio runtime init failure")?;
             runtime
@@ -289,13 +415,15 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, NotifySmokeOutput, build_daemon_run_options, build_runtime_input,
-        build_status_output, default_signal_windows, render_daemon_output,
-        render_notify_smoke_output, render_ra_guard_output, render_runtime_output,
-        render_setup_output, render_status_output, require_config_path, resolve_evidence_dir,
+        Cli, Command, NotifySmokeOutput, OrphanAction, build_daemon_run_options,
+        build_runtime_input, build_status_output, default_signal_windows, render_daemon_output,
+        render_notify_smoke_output, render_orphans_output, render_ra_guard_output,
+        render_runtime_output, render_setup_output, render_status_output, require_config_path,
+        resolve_evidence_dir,
     };
     use crate::config::{CompletionCleanupPolicy, GuardianConfig, Mode, SamplingPolicy};
     use crate::daemon::{DaemonOutput, MemoryGuardOutput};
+    use crate::orphans::OrphansOutput;
     use crate::runtime::RuntimeOutcome;
     use crate::setup::SetupOutcome;
 
@@ -476,6 +604,32 @@ mod tests {
     }
 
     #[test]
+    fn orphan_output_renders_clean_human_message_and_json() {
+        let output = OrphansOutput {
+            mode: "list".to_string(),
+            tty_supported: true,
+            matched_count: 0,
+            terminated_count: 0,
+            already_exited_count: 0,
+            rejected_count: 0,
+            estimated_freed_bytes: 0,
+            threshold_bytes: None,
+            cycle_index: None,
+            processes: Vec::new(),
+        };
+
+        assert_eq!(
+            render_orphans_output(&output, false).expect("human orphan output"),
+            "✅ 깨끗합니다!"
+        );
+        assert!(
+            render_orphans_output(&output, true)
+                .expect("json orphan output")
+                .contains("\"matched_count\":0")
+        );
+    }
+
+    #[test]
     fn clap_parser_builds_run_once_command() {
         let cli = Cli::parse_from([
             "cancerbroker",
@@ -550,6 +704,49 @@ mod tests {
         match cli.command {
             Command::NotifySmoke { json } => assert!(json),
             _ => panic!("expected notify-smoke command"),
+        }
+    }
+
+    #[test]
+    fn clap_parser_builds_orphans_list_and_watch_commands() {
+        let list_cli = Cli::parse_from(["cancerbroker", "orphans", "--json"]);
+        match list_cli.command {
+            Command::Orphans {
+                json,
+                dry_run,
+                kill,
+                action,
+                ..
+            } => {
+                assert!(json);
+                assert!(!dry_run);
+                assert!(!kill);
+                assert!(action.is_none());
+            }
+            _ => panic!("expected orphans command"),
+        }
+
+        let watch_cli = Cli::parse_from([
+            "cancerbroker",
+            "orphans",
+            "watch",
+            "--json",
+            "--interval-secs",
+            "5",
+        ]);
+        match watch_cli.command {
+            Command::Orphans {
+                action:
+                    Some(OrphanAction::Watch {
+                        json,
+                        interval_secs,
+                    }),
+                ..
+            } => {
+                assert!(json);
+                assert_eq!(interval_secs, 5);
+            }
+            _ => panic!("expected orphans watch command"),
         }
     }
 

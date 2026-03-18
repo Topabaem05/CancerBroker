@@ -16,6 +16,7 @@ pub enum RemediationReason {
     Leak,
     CompletedSessionCleanup,
     RustAnalyzerSessionReplacement,
+    Orphan,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -101,6 +102,7 @@ fn build_process_notification(
         RemediationReason::RustAnalyzerSessionReplacement => {
             "CancerBroker replaced an older rust-analyzer process for this session"
         }
+        RemediationReason::Orphan => "CancerBroker terminated an orphaned Opencode process",
     }
     .to_string();
 
@@ -129,6 +131,7 @@ fn build_group_notification(
         RemediationReason::RustAnalyzerSessionReplacement => {
             "CancerBroker replaced an older rust-analyzer process group for this session"
         }
+        RemediationReason::Orphan => "CancerBroker terminated an orphaned Opencode process group",
     }
     .to_string();
 

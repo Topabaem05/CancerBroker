@@ -73,6 +73,17 @@ pub fn remediate_process(
     platform_remediate_process(request)
 }
 
+pub fn remediate_process_force(
+    request: &ProcessRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    match validate_process_identity(&request.identity, &request.ownership_policy) {
+        SafetyDecision::Rejected(reason) => return Ok(ProcessRemediationOutcome::Rejected(reason)),
+        SafetyDecision::Allowed => {}
+    }
+
+    platform_force_remediate_process(request)
+}
+
 pub fn remediate_process_group(
     request: &ProcessGroupRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
@@ -101,6 +112,24 @@ fn platform_remediate_process(
 
     if wait_for_exit(pid, request.term_timeout) {
         return Ok(ProcessRemediationOutcome::TerminatedGracefully);
+    }
+
+    kill(pid, Some(Signal::SIGKILL)).map_err(signal_error)?;
+
+    Ok(ProcessRemediationOutcome::TerminatedForced)
+}
+
+#[cfg(unix)]
+fn platform_force_remediate_process(
+    request: &ProcessRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    use nix::sys::signal::{Signal, kill};
+    use nix::unistd::Pid;
+
+    let pid = Pid::from_raw(request.identity.pid as i32);
+
+    if !is_alive_unix(pid) {
+        return Ok(ProcessRemediationOutcome::AlreadyExited);
     }
 
     kill(pid, Some(Signal::SIGKILL)).map_err(signal_error)?;
@@ -146,8 +175,22 @@ fn platform_remediate_process(
     Ok(ProcessRemediationOutcome::TerminatedForced)
 }
 
+#[cfg(windows)]
+fn platform_force_remediate_process(
+    request: &ProcessRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    platform_remediate_process(request)
+}
+
 #[cfg(not(any(unix, windows)))]
 fn platform_remediate_process(
+    _request: &ProcessRemediationRequest,
+) -> Result<ProcessRemediationOutcome, RemediationError> {
+    Err(RemediationError::UnsupportedPlatform)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn platform_force_remediate_process(
     _request: &ProcessRemediationRequest,
 ) -> Result<ProcessRemediationOutcome, RemediationError> {
     Err(RemediationError::UnsupportedPlatform)
@@ -258,7 +301,7 @@ mod tests {
 
     use super::{
         ProcessGroupRemediationRequest, ProcessRemediationOutcome, ProcessRemediationRequest,
-        remediate_process, remediate_process_group, signal_error,
+        remediate_process, remediate_process_force, remediate_process_group, signal_error,
     };
     use crate::platform::current_effective_uid;
     use crate::safety::{OwnershipPolicy, ProcessIdentity};
@@ -308,6 +351,19 @@ mod tests {
         request.identity.command = "bash worker".to_string();
 
         let outcome = remediate_process(&request).expect("command mismatch should not error");
+
+        assert_eq!(
+            outcome,
+            ProcessRemediationOutcome::Rejected("command_marker_mismatch")
+        );
+    }
+
+    #[test]
+    fn remediate_process_force_rejects_command_marker_mismatch_before_signals() {
+        let mut request = sample_request();
+        request.identity.command = "bash worker".to_string();
+
+        let outcome = remediate_process_force(&request).expect("command mismatch should not error");
 
         assert_eq!(
             outcome,

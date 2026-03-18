@@ -14,6 +14,7 @@ pub mod metrics;
 pub mod monitor;
 pub(crate) mod notification_session;
 pub(crate) mod notifications;
+pub mod orphans;
 pub mod packaging;
 pub mod platform;
 pub mod policy;
