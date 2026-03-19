@@ -42,12 +42,24 @@ Use non-interactive mode when you want the machine-recommended defaults without 
 cancerbroker setup --non-interactive
 ```
 
+If you only want to register CancerBroker as an Opencode MCP server and leave the guardian config untouched:
+
+```bash
+cancerbroker setup --mcp-only --non-interactive
+```
+
 ### What Setup Writes
 
 `cancerbroker setup` updates these files:
 
 - Opencode MCP config: `~/.config/opencode/opencode.json`
 - CancerBroker guard config: `~/.config/cancerbroker/config.toml`
+
+Notes:
+
+- `setup --mcp-only` updates only the Opencode MCP config.
+- The Opencode config reader accepts JSON and JSONC-style comments/trailing commas, then writes canonical JSON back when it needs to change the file.
+- If the desired `mcp.cancerbroker` entry is already present, CancerBroker skips the write and does not create a backup.
 
 If you want to override the guard-config location, set `CANCERBROKER_CONFIG` before running the command:
 
