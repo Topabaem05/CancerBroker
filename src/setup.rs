@@ -4,6 +4,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use color_eyre::eyre::Result;
+use json5::from_str as json5_from_str;
 use serde_json::{Map, Value, json};
 use thiserror::Error;
 use toml::Table as TomlTable;
@@ -23,6 +24,7 @@ const GIB_BYTES: u64 = 1024 * 1024 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetupOptions {
     pub interactive: bool,
+    pub mcp_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,8 @@ pub enum SetupError {
         path: String,
         source: serde_json::Error,
     },
+    #[error("opencode config jsonc parse error at {path}: {details}")]
+    ParseJsonc { path: String, details: String },
     #[error("opencode config write error at {path}: {source}")]
     Write {
         path: String,
@@ -131,10 +135,18 @@ fn read_opencode_config(config_path: &Path) -> Result<Value, SetupError> {
         source,
     })?;
 
-    serde_json::from_str(&content).map_err(|source| SetupError::Parse {
-        path: config_path.display().to_string(),
-        source,
-    })
+    match serde_json::from_str(&content) {
+        Ok(value) => Ok(value),
+        Err(source) => json5_from_str::<Value>(&content).map_err(|json5_error| {
+            if cfg!(test) {
+                let _ = source;
+            }
+            SetupError::ParseJsonc {
+                path: config_path.display().to_string(),
+                details: json5_error.to_string(),
+            }
+        }),
+    }
 }
 
 fn ensure_object(value: &mut Value) -> Result<&mut Map<String, Value>, SetupError> {
@@ -189,6 +201,31 @@ fn write_opencode_config(config_path: &Path, root: &Value) -> Result<(), SetupEr
         source,
     })?;
     Ok(())
+}
+
+fn serialize_opencode_config(root: &Value, config_path: &Path) -> Result<String, SetupError> {
+    serde_json::to_string_pretty(root)
+        .map(|content| format!("{content}\n"))
+        .map_err(|source| SetupError::Parse {
+            path: config_path.display().to_string(),
+            source,
+        })
+}
+
+fn write_opencode_config_if_changed(
+    config_path: &Path,
+    root: &Value,
+) -> Result<Option<PathBuf>, SetupError> {
+    let new_content = serialize_opencode_config(root, config_path)?;
+    let existing_content = fs::read_to_string(config_path).ok();
+
+    if existing_content.as_deref() == Some(new_content.as_str()) {
+        return Ok(None);
+    }
+
+    let backup_path = write_backup_if_present(config_path)?;
+    write_opencode_config(config_path, root)?;
+    Ok(backup_path)
 }
 
 fn read_guardian_config_document(config_path: &Path) -> Result<toml::Value, SetupError> {
@@ -426,9 +463,8 @@ fn install_with_answers(
     answers: &SetupWizardAnswers,
 ) -> Result<SetupOutcome, SetupError> {
     let mut opencode_root = read_opencode_config(opencode_path)?;
-    let opencode_backup_path = write_backup_if_present(opencode_path)?;
     update_opencode_config(&mut opencode_root, true)?;
-    write_opencode_config(opencode_path, &opencode_root)?;
+    let opencode_backup_path = write_opencode_config_if_changed(opencode_path, &opencode_root)?;
 
     let mut guardian_root = read_guardian_config_document(guardian_path)?;
     let guardian_backup_path = write_backup_if_present(guardian_path)?;
@@ -448,6 +484,20 @@ fn install_with_answers(
     })
 }
 
+fn install_with_mcp_only(opencode_path: &Path) -> Result<SetupOutcome, SetupError> {
+    let mut opencode_root = read_opencode_config(opencode_path)?;
+    update_opencode_config(&mut opencode_root, true)?;
+    let opencode_backup_path = write_opencode_config_if_changed(opencode_path, &opencode_root)?;
+
+    Ok(SetupOutcome {
+        opencode_config_path: opencode_path.to_path_buf(),
+        opencode_backup_path,
+        guardian_config_path: None,
+        guardian_backup_path: None,
+        installed: true,
+    })
+}
+
 fn uninstall_opencode(config_path: &Path) -> Result<SetupOutcome, SetupError> {
     if !config_path.exists() {
         return Ok(SetupOutcome {
@@ -460,9 +510,8 @@ fn uninstall_opencode(config_path: &Path) -> Result<SetupOutcome, SetupError> {
     }
 
     let mut root = read_opencode_config(config_path)?;
-    let opencode_backup_path = write_backup_if_present(config_path)?;
     update_opencode_config(&mut root, false)?;
-    write_opencode_config(config_path, &root)?;
+    let opencode_backup_path = write_opencode_config_if_changed(config_path, &root)?;
 
     Ok(SetupOutcome {
         opencode_config_path: config_path.to_path_buf(),
@@ -477,6 +526,10 @@ pub fn setup(options: SetupOptions) -> Result<SetupOutcome> {
     let home = home_dir().ok_or(SetupError::MissingHome)?;
     let opencode_path = opencode_config_path(&home);
     let guardian_path = guardian_config_path(&home);
+
+    if options.mcp_only {
+        return install_with_mcp_only(&opencode_path).map_err(Into::into);
+    }
 
     if options.interactive {
         let existing_guardian = load_existing_guardian_settings(&guardian_path)?;
@@ -524,6 +577,7 @@ pub fn setup(options: SetupOptions) -> Result<SetupOutcome> {
 pub fn default_setup_options(non_interactive: bool) -> SetupOptions {
     SetupOptions {
         interactive: !non_interactive && io::stdin().is_terminal() && io::stdout().is_terminal(),
+        mcp_only: false,
     }
 }
 
@@ -545,8 +599,9 @@ mod tests {
         CANCERBROKER_MCP_KEY, GIB_BYTES, SetupOptions, TomlTable, backup_path,
         build_wizard_defaults, cancerbroker_mcp_entry, default_answers, default_same_uid_only,
         default_setup_options, gib_to_bytes, guardian_config_path, install_with_io,
-        opencode_config_path, read_guardian_config_document, recommended_memory_defaults,
-        uninstall_opencode, update_guardian_config, update_opencode_config,
+        install_with_mcp_only, opencode_config_path, read_guardian_config_document,
+        recommended_memory_defaults, uninstall_opencode, update_guardian_config,
+        update_opencode_config,
     };
     use crate::config::{GuardianConfig, default_guardian_config_path};
     use crate::setup_ui::SetupWizardAnswers;
@@ -706,7 +761,10 @@ mod tests {
         let outcome = install_with_io(
             &opencode_path,
             &guardian_path,
-            SetupOptions { interactive: false },
+            SetupOptions {
+                interactive: false,
+                mcp_only: false,
+            },
             &mut input,
             &mut output,
         )
@@ -750,7 +808,10 @@ mod tests {
         let outcome = install_with_io(
             &opencode_path,
             &guardian_path,
-            SetupOptions { interactive: true },
+            SetupOptions {
+                interactive: true,
+                mcp_only: false,
+            },
             &mut input,
             &mut output,
         )
@@ -830,6 +891,57 @@ mod tests {
     fn default_setup_options_disables_interaction_outside_tty_when_requested() {
         let options = default_setup_options(true);
         assert!(!options.interactive);
+        assert!(!options.mcp_only);
+    }
+
+    #[test]
+    fn install_with_mcp_only_writes_opencode_only() {
+        let dir = tempdir().expect("tempdir");
+        let opencode_path = dir.path().join("opencode.json");
+
+        let outcome = install_with_mcp_only(&opencode_path).expect("mcp-only setup outcome");
+        let opencode_content = fs::read_to_string(&opencode_path).expect("updated opencode config");
+
+        assert!(outcome.installed);
+        assert!(opencode_content.contains("\"cancerbroker\""));
+        assert!(outcome.guardian_config_path.is_none());
+        assert!(outcome.guardian_backup_path.is_none());
+    }
+
+    #[test]
+    fn install_with_mcp_only_is_idempotent_when_config_is_unchanged() {
+        let dir = tempdir().expect("tempdir");
+        let opencode_path = dir.path().join("opencode.json");
+
+        let first = install_with_mcp_only(&opencode_path).expect("first mcp-only setup outcome");
+        let second = install_with_mcp_only(&opencode_path).expect("second mcp-only setup outcome");
+
+        assert!(first.opencode_backup_path.is_none());
+        assert!(second.opencode_backup_path.is_none());
+    }
+
+    #[test]
+    fn read_opencode_config_accepts_jsonc_comments_and_trailing_commas() {
+        let dir = tempdir().expect("tempdir");
+        let opencode_path = dir.path().join("opencode.json");
+        fs::write(
+            &opencode_path,
+            r#"
+            {
+              // comment
+              mcp: {
+                trailing: {
+                  type: "local",
+                },
+              },
+            }
+            "#,
+        )
+        .expect("jsonc config");
+
+        let root = super::read_opencode_config(&opencode_path).expect("jsonc config should parse");
+
+        assert_eq!(root["mcp"]["trailing"]["type"], "local");
     }
 
     #[test]

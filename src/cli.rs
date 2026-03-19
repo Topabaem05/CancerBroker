@@ -74,6 +74,8 @@ pub enum Command {
         uninstall: bool,
         #[arg(long)]
         non_interactive: bool,
+        #[arg(long)]
+        mcp_only: bool,
     },
 }
 
@@ -394,11 +396,14 @@ pub fn run(cli: Cli) -> Result<()> {
         Command::Setup {
             uninstall,
             non_interactive,
+            mcp_only,
         } => {
             let output = if uninstall {
                 uninstall_opencode()?
             } else {
-                setup_opencode(default_setup_options(non_interactive))?
+                let mut options = default_setup_options(non_interactive);
+                options.mcp_only = mcp_only;
+                setup_opencode(options)?
             };
             println!("{}", render_setup_output(&output));
         }
@@ -663,9 +668,30 @@ mod tests {
             Command::Setup {
                 uninstall,
                 non_interactive,
+                mcp_only,
             } => {
                 assert!(uninstall);
                 assert!(non_interactive);
+                assert!(!mcp_only);
+            }
+            _ => panic!("expected setup command"),
+        }
+    }
+
+    #[test]
+    fn clap_parser_builds_setup_command_with_mcp_only_flag() {
+        let cli = Cli::parse_from(["cancerbroker", "setup", "--mcp-only"]);
+
+        assert_eq!(cli.config, None);
+        match cli.command {
+            Command::Setup {
+                uninstall,
+                non_interactive,
+                mcp_only,
+            } => {
+                assert!(!uninstall);
+                assert!(!non_interactive);
+                assert!(mcp_only);
             }
             _ => panic!("expected setup command"),
         }
