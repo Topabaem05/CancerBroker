@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
+
+#[cfg(unix)]
+use std::process::Command;
 
 use serde::Serialize;
 use thiserror::Error;
