@@ -591,6 +591,7 @@ mod tests {
                         start_time_secs: 0,
                         uid: Some(0),
                         current_rss_bytes: 0,
+                        allow_inherited_command_match: false,
                         command: "python worker".to_string(),
                         listening_ports: vec![],
                     }],

@@ -300,6 +300,7 @@ fn smoke_preview_identity() -> ProcessIdentity {
         start_time_secs: 1,
         uid: Some(501),
         current_rss_bytes: 512 * 1024 * 1024,
+        allow_inherited_command_match: false,
         command: "/tmp/project/opencode-worker ses_smoke".to_string(),
         listening_ports: vec![],
     }
@@ -409,6 +410,7 @@ mod tests {
             start_time_secs: 1,
             uid: Some(501),
             current_rss_bytes: 512 * 1024 * 1024,
+            allow_inherited_command_match: false,
             command: "/tmp/project/opencode-worker ses_alpha".to_string(),
             listening_ports: vec![],
         }

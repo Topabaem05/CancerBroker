@@ -314,6 +314,7 @@ mod tests {
             start_time_secs: 0,
             uid: Some(current_effective_uid()),
             current_rss_bytes: 0,
+            allow_inherited_command_match: false,
             command: "opencode worker".to_string(),
             listening_ports: vec![],
         }
