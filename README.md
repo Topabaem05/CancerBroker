@@ -204,7 +204,7 @@ cancerbroker orphans guard --threshold-mb 512 --interval-secs 30
 - On Unix-like systems, CancerBroker collects live processes and combines that inventory with `ps -axo pid=,tty=`.
 - A process is considered an orphan candidate only when:
   - its TTY is `?` or `??`
-  - its executable token or basename matches an allowed command marker such as `opencode`
+  - its executable token or basename matches an allowed command marker such as `opencode`, or it is a `node` child that is confidently associated with an `opencode` parent/session
   - it passes the same UID / command-marker safety checks used by other remediation paths
 - CancerBroker intentionally does **not** match arbitrary commands just because their file path happens to contain `opencode`.
 - On non-Unix targets, the exact TTY heuristic is not available, so the feature degrades safely instead of applying an unsafe approximation.
