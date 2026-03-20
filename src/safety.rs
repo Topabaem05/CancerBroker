@@ -11,6 +11,7 @@ pub struct ProcessIdentity {
     pub start_time_secs: u64,
     pub uid: Option<u32>,
     pub current_rss_bytes: u64,
+    pub allow_inherited_command_match: bool,
     pub command: String,
     pub listening_ports: Vec<u16>,
 }
@@ -48,6 +49,32 @@ fn command_matches_policy(command: &str, required_command_markers: &[String]) ->
         .any(|marker| command.contains(&marker.to_lowercase()))
 }
 
+fn command_token(command: &str) -> &str {
+    command.split_whitespace().next().unwrap_or(command)
+}
+
+fn token_basename(token: &str) -> &str {
+    token.rsplit(['/', '\\']).next().unwrap_or(token)
+}
+
+fn is_node_child_process(command: &str) -> bool {
+    token_basename(command_token(command)).eq_ignore_ascii_case("node")
+}
+
+fn command_matches_policy_exact_basename(
+    command: &str,
+    required_command_markers: &[String],
+) -> bool {
+    if required_command_markers.is_empty() {
+        return true;
+    }
+
+    let basename = token_basename(command_token(command));
+    required_command_markers
+        .iter()
+        .any(|marker| basename.eq_ignore_ascii_case(marker))
+}
+
 pub fn validate_process_identity(
     identity: &ProcessIdentity,
     policy: &OwnershipPolicy,
@@ -56,11 +83,42 @@ pub fn validate_process_identity(
         return SafetyDecision::Rejected("uid_mismatch");
     }
 
-    if !command_matches_policy(&identity.command, &policy.required_command_markers) {
+    if !(command_matches_policy(&identity.command, &policy.required_command_markers)
+        || identity.allow_inherited_command_match && is_node_child_process(&identity.command))
+    {
         return SafetyDecision::Rejected("command_marker_mismatch");
     }
 
     SafetyDecision::Allowed
+}
+
+pub fn validate_process_identity_or_opencode_parent_node(
+    identity: &ProcessIdentity,
+    parent_identity: Option<&ProcessIdentity>,
+    session_associated: bool,
+    policy: &OwnershipPolicy,
+) -> SafetyDecision {
+    if policy.same_uid_only && identity.uid != Some(policy.expected_uid) {
+        return SafetyDecision::Rejected("uid_mismatch");
+    }
+
+    if command_matches_policy(&identity.command, &policy.required_command_markers) {
+        return SafetyDecision::Allowed;
+    }
+
+    if is_node_child_process(&identity.command)
+        && ((parent_identity.is_some_and(|parent_identity| {
+            (!policy.same_uid_only || parent_identity.uid == Some(policy.expected_uid))
+                && command_matches_policy_exact_basename(
+                    &parent_identity.command,
+                    &policy.required_command_markers,
+                )
+        })) || session_associated)
+    {
+        return SafetyDecision::Allowed;
+    }
+
+    SafetyDecision::Rejected("command_marker_mismatch")
 }
 
 pub fn canonicalize_policy_path(path: &Path) -> Result<PathBuf, SafetyError> {
@@ -101,8 +159,9 @@ mod tests {
 
     use super::{
         OwnershipPolicy, ProcessIdentity, SafetyDecision, allowlist_contains_path,
-        canonicalize_policy_path, command_matches_policy, is_path_allowlisted,
-        validate_process_identity,
+        canonicalize_policy_path, command_matches_policy, command_matches_policy_exact_basename,
+        is_node_child_process, is_path_allowlisted, validate_process_identity,
+        validate_process_identity_or_opencode_parent_node,
     };
 
     fn sample_identity() -> ProcessIdentity {
@@ -113,6 +172,7 @@ mod tests {
             start_time_secs: 0,
             uid: Some(1000),
             current_rss_bytes: 0,
+            allow_inherited_command_match: false,
             command: "opencode worker".to_string(),
             listening_ports: vec![],
         }
@@ -166,6 +226,79 @@ mod tests {
             decision,
             SafetyDecision::Rejected("command_marker_mismatch")
         );
+    }
+
+    #[test]
+    fn exact_basename_match_avoids_path_only_false_positives() {
+        assert!(command_matches_policy_exact_basename(
+            "/usr/local/bin/opencode ses_alpha",
+            &["opencode".to_string()]
+        ));
+        assert!(!command_matches_policy_exact_basename(
+            "bun run /Users/name/.config/opencode/server.ts",
+            &["opencode".to_string()]
+        ));
+    }
+
+    #[test]
+    fn validate_process_identity_or_opencode_parent_node_allows_node_child_of_opencode() {
+        let mut identity = sample_identity();
+        identity.command = "node worker.js".to_string();
+
+        let mut parent = sample_identity();
+        parent.command = "opencode ses_alpha worker".to_string();
+
+        let decision = validate_process_identity_or_opencode_parent_node(
+            &identity,
+            Some(&parent),
+            false,
+            &sample_policy(),
+        );
+
+        assert_eq!(decision, SafetyDecision::Allowed);
+    }
+
+    #[test]
+    fn validate_process_identity_or_opencode_parent_node_rejects_unrelated_node() {
+        let mut identity = sample_identity();
+        identity.command = "node worker.js".to_string();
+
+        let mut parent = sample_identity();
+        parent.command = "bash worker".to_string();
+
+        let decision = validate_process_identity_or_opencode_parent_node(
+            &identity,
+            Some(&parent),
+            false,
+            &sample_policy(),
+        );
+
+        assert_eq!(
+            decision,
+            SafetyDecision::Rejected("command_marker_mismatch")
+        );
+    }
+
+    #[test]
+    fn validate_process_identity_or_opencode_parent_node_allows_session_associated_node() {
+        let mut identity = sample_identity();
+        identity.command = "node worker.js".to_string();
+
+        let decision = validate_process_identity_or_opencode_parent_node(
+            &identity,
+            None,
+            true,
+            &sample_policy(),
+        );
+
+        assert_eq!(decision, SafetyDecision::Allowed);
+    }
+
+    #[test]
+    fn node_child_detection_uses_executable_basename() {
+        assert!(is_node_child_process("node worker.js"));
+        assert!(is_node_child_process("/usr/local/bin/node worker.js"));
+        assert!(!is_node_child_process("bun worker.js"));
     }
 
     #[test]
