@@ -2,7 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::config::LeakDetectionPolicy;
 use crate::monitor::process::{ProcessInventory, ProcessSample};
-use crate::safety::{OwnershipPolicy, ProcessIdentity, SafetyDecision, validate_process_identity};
+use crate::resolution::{SessionAssociation, associate_process_sample_with_session};
+use crate::safety::{
+    OwnershipPolicy, ProcessIdentity, SafetyDecision,
+    validate_process_identity_or_opencode_parent_node,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct LeakKey {
@@ -42,6 +46,7 @@ fn build_process_identity(sample: &ProcessSample) -> ProcessIdentity {
         start_time_secs: sample.start_time_secs,
         uid: sample.uid,
         current_rss_bytes: sample.memory_bytes,
+        allow_inherited_command_match: false,
         command: sample.command.clone(),
         listening_ports: sample.listening_ports.clone(),
     }
@@ -55,6 +60,7 @@ fn build_leak_key(sample: &ProcessSample) -> LeakKey {
 }
 
 fn is_eligible_sample(
+    inventory: &ProcessInventory,
     sample: &ProcessSample,
     leak_policy: &LeakDetectionPolicy,
     ownership_policy: &OwnershipPolicy,
@@ -64,8 +70,32 @@ fn is_eligible_sample(
     }
 
     let identity = build_process_identity(sample);
-    match validate_process_identity(&identity, ownership_policy) {
-        SafetyDecision::Allowed => Some(identity),
+    let parent_identity = sample
+        .parent_pid
+        .and_then(|parent_pid| inventory.sample(parent_pid))
+        .map(build_process_identity);
+    let session_associated = matches!(
+        associate_process_sample_with_session(inventory, sample),
+        SessionAssociation::Resolved(_)
+    );
+    let direct_allowed = matches!(
+        crate::safety::validate_process_identity(&identity, ownership_policy),
+        SafetyDecision::Allowed
+    );
+    let extended = validate_process_identity_or_opencode_parent_node(
+        &identity,
+        parent_identity.as_ref(),
+        session_associated,
+        ownership_policy,
+    );
+    match extended {
+        SafetyDecision::Allowed => {
+            let mut identity = identity;
+            if !direct_allowed {
+                identity.allow_inherited_command_match = true;
+            }
+            Some(identity)
+        }
         SafetyDecision::Rejected(_) => None,
     }
 }
@@ -99,7 +129,9 @@ impl LeakDetector {
         let mut candidates = Vec::new();
 
         for sample in inventory.samples() {
-            let Some(identity) = is_eligible_sample(sample, leak_policy, ownership_policy) else {
+            let Some(identity) =
+                is_eligible_sample(inventory, sample, leak_policy, ownership_policy)
+            else {
                 continue;
             };
 
@@ -299,5 +331,100 @@ mod tests {
                 .observe_inventory(&inventory, &policy, &ownership)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn detector_allows_node_child_with_opencode_parent() {
+        let mut detector = LeakDetector::default();
+        let policy = leak_policy();
+        let ownership = ownership_policy();
+
+        let inventory_one = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(501),
+                memory_bytes: 10,
+                cpu_percent: 0.1,
+                command: "opencode ses_alpha".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(501),
+                memory_bytes: 100,
+                cpu_percent: 0.5,
+                command: "node worker.js".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+        let inventory_two = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(501),
+                memory_bytes: 10,
+                cpu_percent: 0.1,
+                command: "opencode ses_alpha".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(501),
+                memory_bytes: 140,
+                cpu_percent: 0.5,
+                command: "node worker.js".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+        let inventory_three = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(501),
+                memory_bytes: 10,
+                cpu_percent: 0.1,
+                command: "opencode ses_alpha".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(501),
+                memory_bytes: 170,
+                cpu_percent: 0.5,
+                command: "node worker.js".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        assert!(
+            detector
+                .observe_inventory(&inventory_one, &policy, &ownership)
+                .is_empty()
+        );
+        assert!(
+            detector
+                .observe_inventory(&inventory_two, &policy, &ownership)
+                .is_empty()
+        );
+
+        let candidates = detector.observe_inventory(&inventory_three, &policy, &ownership);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].identity.command, "node worker.js");
     }
 }

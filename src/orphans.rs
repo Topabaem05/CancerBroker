@@ -12,7 +12,11 @@ use crate::config::GuardianConfig;
 use crate::notifications::{NotificationContext, RemediationReason, notify_process_terminated};
 use crate::platform::current_effective_uid;
 use crate::remediation::{ProcessRemediationOutcome, remediate_process, remediate_process_force};
-use crate::safety::{OwnershipPolicy, ProcessIdentity, SafetyDecision, validate_process_identity};
+use crate::resolution::{SessionAssociation, associate_process_sample_with_session};
+use crate::safety::{
+    OwnershipPolicy, ProcessIdentity, SafetyDecision,
+    validate_process_identity_or_opencode_parent_node,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OrphanProcessOutput {
@@ -313,10 +317,6 @@ fn scan_with_inventory(
             continue;
         }
 
-        if !matches_orphan_command(&sample.command, &ownership_policy.required_command_markers) {
-            continue;
-        }
-
         let identity = ProcessIdentity {
             pid: sample.pid,
             parent_pid: sample.parent_pid,
@@ -324,15 +324,50 @@ fn scan_with_inventory(
             start_time_secs: sample.start_time_secs,
             uid: sample.uid,
             current_rss_bytes: sample.memory_bytes,
+            allow_inherited_command_match: false,
             command: orphan_identity_command(&sample.command),
             listening_ports: sample.listening_ports.clone(),
         };
 
+        let parent_identity = sample
+            .parent_pid
+            .and_then(|parent_pid| inventory.sample(parent_pid))
+            .map(|parent| ProcessIdentity {
+                pid: parent.pid,
+                parent_pid: parent.parent_pid,
+                pgid: parent.pgid,
+                start_time_secs: parent.start_time_secs,
+                uid: parent.uid,
+                current_rss_bytes: parent.memory_bytes,
+                allow_inherited_command_match: false,
+                command: parent.command.clone(),
+                listening_ports: parent.listening_ports.clone(),
+            });
+        let session_associated = matches!(
+            associate_process_sample_with_session(inventory, sample),
+            SessionAssociation::Resolved(_)
+        );
+
+        let direct_allowed = matches!(
+            crate::safety::validate_process_identity(&identity, &ownership_policy),
+            SafetyDecision::Allowed
+        );
+
         if !matches!(
-            validate_process_identity(&identity, &ownership_policy),
+            validate_process_identity_or_opencode_parent_node(
+                &identity,
+                parent_identity.as_ref(),
+                session_associated,
+                &ownership_policy,
+            ),
             SafetyDecision::Allowed
         ) {
             continue;
+        }
+
+        let mut identity = identity;
+        if !direct_allowed {
+            identity.allow_inherited_command_match = true;
         }
 
         candidates.push(OrphanCandidate {
@@ -410,6 +445,7 @@ fn is_orphan_tty(tty: &str) -> bool {
     matches!(tty.trim(), "?" | "??")
 }
 
+#[cfg(test)]
 fn matches_orphan_command(command: &str, required_command_markers: &[String]) -> bool {
     if required_command_markers.is_empty() {
         return true;
@@ -426,7 +462,7 @@ fn orphan_identity_command(command: &str) -> String {
     command
         .split_whitespace()
         .map(token_basename)
-        .find(|token| matches!(*token, "opencode" | "openagent"))
+        .find(|token| matches!(*token, "opencode" | "openagent" | "node"))
         .unwrap_or_else(|| command.split_whitespace().next().unwrap_or(command))
         .to_string()
 }
@@ -531,6 +567,51 @@ mod tests {
             orphan_identity_command("opencode ses_alpha worker"),
             "opencode"
         );
+        assert_eq!(
+            orphan_identity_command("/usr/local/bin/node worker.js"),
+            "node"
+        );
+    }
+
+    #[test]
+    fn scan_with_inventory_allows_node_child_of_opencode_parent() {
+        let config = GuardianConfig::default();
+        let tty_map = super::TtyMap {
+            supported: true,
+            by_pid: [(1_u32, "pts/1".to_string()), (10_u32, "?".to_string())]
+                .into_iter()
+                .collect(),
+        };
+        let inventory = ProcessInventory::from_samples([
+            ProcessSample {
+                pid: 1,
+                parent_pid: None,
+                pgid: Some(1),
+                start_time_secs: 1,
+                uid: Some(crate::platform::current_effective_uid()),
+                memory_bytes: 64,
+                cpu_percent: 0.1,
+                command: "opencode ses_alpha worker".to_string(),
+                listening_ports: vec![],
+            },
+            ProcessSample {
+                pid: 10,
+                parent_pid: Some(1),
+                pgid: Some(10),
+                start_time_secs: 42,
+                uid: Some(crate::platform::current_effective_uid()),
+                memory_bytes: 512 * 1024 * 1024,
+                cpu_percent: 4.2,
+                command: "node worker.js".to_string(),
+                listening_ports: vec![],
+            },
+        ]);
+
+        let scan = scan_with_inventory(&config, &inventory, &tty_map);
+
+        assert_eq!(scan.candidates.len(), 1);
+        assert_eq!(scan.candidates[0].identity.command, "node");
+        assert_eq!(scan.candidates[0].command, "node worker.js");
     }
 
     #[test]
