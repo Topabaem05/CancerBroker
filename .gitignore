@@ -7,3 +7,4 @@ tests/
 remotion-explainer/node_modules/
 remotion-explainer/out/
 remotion-explainer/.cache/
+.sisyphus/evidence/*backtest*
